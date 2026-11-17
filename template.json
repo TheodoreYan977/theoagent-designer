@@ -1,9 +1,10 @@
 {
   "version": 1,
-  "artboards": [
+  "pages": [
     {
       "id": "cover",
       "name": "封面",
+      "kind": "cover",
       "width": 1242,
       "height": 1660,
       "background": "#FBF7F0",
@@ -118,6 +119,7 @@
     {
       "id": "note",
       "name": "图文笔记",
+      "kind": "note",
       "width": 1080,
       "height": 1440,
       "background": "#FBF7F0",

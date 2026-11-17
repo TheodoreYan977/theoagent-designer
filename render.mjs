@@ -94,14 +94,15 @@ body{background:${ab.background || '#fff'};-webkit-font-smoothing:antialiased;}
 
 /** 把模板的每块画布渲成 PNG。content = 扁平占位符映射。 */
 export async function renderArtboards(template, content, { outDir, scale = 2 } = {}) {
-  const fontsUsed = [...new Set(template.artboards.flatMap((a) => a.elements.map((e) => e.font)))];
+  const pages = template.pages || template.artboards || [];
+  const fontsUsed = [...new Set(pages.flatMap((a) => a.elements.map((e) => e.font)))];
   const faceCss = fontCss(fontsUsed);
   fs.mkdirSync(outDir, { recursive: true });
   const browser = await openBrowser();
   try {
     const page = await browser.newPage();
     const results = [];
-    for (const ab of template.artboards) {
+    for (const ab of pages) {
       const html = buildHtml(ab, content, faceCss);
       const htmlPath = path.join(outDir, `${ab.id}.html`);
       const pngPath = path.join(outDir, `${ab.id}.png`);

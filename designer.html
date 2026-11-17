@@ -91,7 +91,7 @@ let history = [], index = -1, lastSnapKey = '', lastSnapTime = 0;
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
 const $ = (id) => document.getElementById(id);
-const activeBoard = () => template.artboards.find((a) => a.id === activeId);
+const activeBoard = () => template.pages.find((a) => a.id === activeId);
 const selectedEl = () => selectedId ? activeBoard().elements.find((e) => e.id === selectedId) : null;
 const substitute = (s) => String(s ?? '').replace(/\{(\w+)\}/g, (m, k) => (sample && sample[k] !== undefined ? sample[k] : m));
 const resolveSrc = (s) => { const v = substitute(s); if (!v) return ''; if (/^data:/.test(v) || /^(https?|file):/.test(v)) return v; return '/files/' + v.replace(/\\/g, '/'); };
@@ -521,7 +521,7 @@ function del() {
 }
 
 function buildTabs() {
-  $('tabs').innerHTML = template.artboards.map((a) => `<button class="${a.id === activeId ? 'active' : ''}" onclick="switchBoard('${a.id}')">${a.name} ${a.width}×${a.height}</button>`).join('');
+  $('tabs').innerHTML = template.pages.map((a) => `<button class="${a.id === activeId ? 'active' : ''}" onclick="switchBoard('${a.id}')">${a.name} ${a.width}×${a.height}</button>`).join('');
 }
 
 function switchBoard(id) {
@@ -550,7 +550,8 @@ async function exportPng() {
 (async function init() {
   const [t, s] = await Promise.all([fetch('/api/template').then((r) => r.json()), fetch('/api/sample').then((r) => r.json())]);
   template = t; sample = s;
-  activeId = template.artboards[0].id;
+  if (template.artboards && !template.pages) template.pages = template.artboards; // 兼容旧格式
+  activeId = template.pages[0].id;
   history = [clone(template)]; index = 0; updateButtons();
   buildTabs();
   render();
