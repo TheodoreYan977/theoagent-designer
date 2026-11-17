@@ -34,6 +34,7 @@
   #panel .row{margin-bottom:10px;}
   #panel label{display:block;font-size:12px;color:var(--muted);margin-bottom:3px;}
   #panel input[type=text],#panel input[type=number],#panel select,#panel textarea{width:100%;background:#1c1c1c;border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:6px 8px;font-size:13px;}
+  #panel input[type=text],#panel input[type=number]{height:32px;}
   #panel textarea{min-height:72px;resize:vertical;font-family:inherit;line-height:1.5;}
   #panel input[type=color]{width:100%;height:32px;border:1px solid var(--line);border-radius:6px;background:#1c1c1c;padding:2px;cursor:pointer;}
   #panel .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
@@ -251,7 +252,7 @@ function populatePanel(el) {
     </div>
     <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:10px">
       <div style="flex:1;min-width:0"><label>宽</label><input type="number" id="p-w" value="${el.w}" oninput="commitSize('w', +this.value)"></div>
-      <button type="button" id="p-lock" onclick="toggleRatio()" title="锁定宽高比：按下后改一个，另一个按比例跟着变" style="width:36px;height:36px;flex:0 0 36px;border:1px solid ${el.ratioLock ? 'var(--moss)' : 'var(--line)'};border-radius:6px;background:${el.ratioLock ? 'var(--moss)' : '#1c1c1c'};color:${el.ratioLock ? '#12231a' : 'var(--ink)'};cursor:pointer;font-size:15px;line-height:1;padding:0">🔗</button>
+      <button type="button" id="p-lock" onclick="toggleRatio()" title="锁定宽高比：按下后改一个，另一个按比例跟着变" style="width:32px;height:32px;flex:0 0 32px;border:1px solid ${el.ratioLock ? 'var(--moss)' : 'var(--line)'};border-radius:6px;background:${el.ratioLock ? 'var(--moss)' : '#1c1c1c'};color:${el.ratioLock ? '#12231a' : 'var(--ink)'};cursor:pointer;font-size:13px;line-height:1;padding:0">🔗</button>
       <div style="flex:1;min-width:0"><label>高</label><input type="number" id="p-h" value="${el.h}" oninput="commitSize('h', +this.value)"></div>
     </div>
     ${isImage ? `<div class="row inline" style="margin-top:8px"><input type="checkbox" id="p-natural" ${el.naturalSize ? 'checked' : ''} onchange="toggleNatural(this.checked)"><label style="margin:0">上传时用图片原始尺寸</label></div>` : ''}
