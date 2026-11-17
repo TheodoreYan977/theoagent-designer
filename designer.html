@@ -208,7 +208,12 @@ function populatePanel(el) {
     <div class="row"><label>元素类型</label><div style="color:var(--moss)">${el.type} · <code style="font-size:11px">${el.id}</code></div></div>
     ${isText ? `<div class="row"><label>内容（可含 {占位符}）</label><textarea id="p-content" oninput="commitField('content', this.value)">${escHtml(el.content || '')}</textarea>
       <div class="ph" style="margin-top:6px"><select id="ph-sel">${ph.map((k) => `<option value="${k}">${k}</option>`).join('')}</select><button onclick="insertPh()">插入</button></div></div>` : ''}
-    ${isImage ? `<div class="row"><label>图片（路径 / {image} / dataURL）</label><input type="text" id="p-src" value="${escHtml(el.src || '')}" oninput="commitField('src', this.value)"></div>` : ''}
+    ${isImage ? `<div class="row"><label>图片</label>
+      <button type="button" style="width:100%;padding:9px 8px;border:1px dashed var(--line);border-radius:6px;background:#1c1c1c;color:var(--ink);cursor:pointer;font-size:13px" onclick="pickImage()">⬆ 上传图片文件</button>
+      <input type="file" id="p-file" accept="image/*" style="display:none" onchange="onFile(event)">
+      <div id="p-thumb" style="margin-top:8px">${el.src ? `<img src="${escHtml(resolveSrc(el.src))}" style="max-width:100%;max-height:90px;border-radius:6px;opacity:.9">` : ''}</div>
+      <input type="text" id="p-src" value="${escHtml(el.src || '')}" placeholder="或粘贴路径 / {image} / dataURL" style="margin-top:6px" oninput="commitField('src', this.value)">
+    </div>` : ''}
     ${isText ? `<div class="row"><label>字体</label><select id="p-font" onchange="commitField('font', this.value)">${Object.keys(FACE).map((n) => `<option ${n === el.font ? 'selected' : ''}>${n}</option>`).join('')}</select></div>` : ''}
     ${isText ? `<div class="grid"><div class="row"><label>字号</label><input type="number" id="p-size" value="${el.size}" oninput="commitField('size', +this.value)"></div><div class="row"><label>行高</label><input type="number" step="0.05" id="p-lineHeight" value="${el.lineHeight || 1.4}" oninput="commitField('lineHeight', +this.value)"></div></div>` : ''}
     ${(isText || isRect) ? `<div class="row"><label>颜色</label><input type="color" id="p-color" value="${el.color || '#1F1F1F'}" oninput="commitField('color', this.value)"></div>` : ''}
@@ -239,6 +244,24 @@ function insertPh() {
   ta.value = ta.value.slice(0, start) + sel.value + ta.value.slice(end);
   ta.focus();
   commitField('content', ta.value);
+}
+
+function pickImage() { const f = $('p-file'); if (f) f.click(); }
+function onFile(e) { const f = e.target.files && e.target.files[0]; if (f) uploadImage(f); e.target.value = ''; }
+async function uploadImage(file) {
+  if (!/^image\//.test(file.type) && !/\.(png|jpe?g|gif|webp|svg)$/i.test(file.name)) { toast('请选择图片文件'); return; }
+  toast('上传中…');
+  try {
+    const res = await fetch('/api/upload?name=' + encodeURIComponent(file.name), { method: 'POST', body: file });
+    let j = { ok: false, error: 'HTTP ' + res.status };
+    try { j = await res.json(); } catch {}
+    if (!j.ok) { toast('上传失败：' + (j.error || '')); return; }
+    commitField('src', j.path);
+    const thumb = $('p-thumb');
+    if (thumb) thumb.innerHTML = '<img src="' + resolveSrc(j.path) + '" style="max-width:100%;max-height:90px;border-radius:6px;opacity:.9">';
+    const inp = $('p-src'); if (inp) inp.value = j.path;
+    toast('已上传');
+  } catch (err) { toast('上传失败：' + err.message); }
 }
 
 function commitField(key, value) {
@@ -350,6 +373,31 @@ window.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
   else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); redo(); }
+});
+
+// 拖拽图片文件到画布 = 上传并新增图片元素
+const canvasEl = $('canvas');
+canvasEl.addEventListener('dragover', (e) => e.preventDefault());
+canvasEl.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (!f || !/^image\//.test(f.type)) return;
+  const s = scale(), ab = activeBoard(), r = $('stage').getBoundingClientRect();
+  const x = Math.max(0, Math.min(ab.width - 100, Math.round((e.clientX - r.left) / s)));
+  const y = Math.max(0, Math.min(ab.height - 100, Math.round((e.clientY - r.top) / s)));
+  toast('上传中…');
+  try {
+    const res = await fetch('/api/upload?name=' + encodeURIComponent(f.name), { method: 'POST', body: f });
+    let j = { ok: false, error: 'HTTP ' + res.status };
+    try { j = await res.json(); } catch {}
+    if (!j.ok) { toast('上传失败：' + (j.error || '')); return; }
+    const el = { id: 'image-' + Date.now().toString(36), type: 'image', x, y, w: 400, h: 300, src: j.path, fit: 'cover', radius: 12 };
+    ab.elements.push(el);
+    snapshot('add:' + el.id, true);
+    render();
+    select(el.id);
+    toast('已添加图片');
+  } catch (err) { toast('上传失败：' + err.message); }
 });
 </script>
 </body>

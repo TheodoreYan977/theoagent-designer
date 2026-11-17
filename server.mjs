@@ -19,6 +19,7 @@ const FONTS = { 'Smiley Sans': 'SmileySans.ttf', 'Noto Serif': 'NotoSerif-VF.ttf
 const readJson = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
 const json = (res, code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); };
 const readBody = (req) => new Promise((resolve, reject) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => resolve(b)); req.on('error', reject); });
+const readRaw = (req) => new Promise((resolve, reject) => { const chunks = []; req.on('data', (c) => chunks.push(c)); req.on('end', () => resolve(Buffer.concat(chunks))); req.on('error', reject); });
 const safeJoin = (base, p) => { const root = path.resolve(base); const abs = path.resolve(root, p); return abs === root || abs.startsWith(root + path.sep) ? abs : null; };
 
 function sendFile(res, file, type, cache = 'no-cache') {
@@ -56,6 +57,19 @@ export function startServer(port = PORT) {
         if (!f || !fs.existsSync(f)) { res.writeHead(404).end('not found'); return; }
         const mt = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml' }[path.extname(f).toLowerCase()] || 'application/octet-stream';
         return sendFile(res, f, mt);
+      }
+      if (url.pathname === '/api/upload' && req.method === 'POST') {
+        const raw = String(url.searchParams.get('name') || 'upload.png');
+        const base = path.basename(raw);
+        const ext = (path.extname(base) || '.png').toLowerCase();
+        if (!['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'].includes(ext)) { res.writeHead(400).end('bad ext'); return; }
+        const buf = await readRaw(req);
+        if (!buf.length) { res.writeHead(400).end('empty'); return; }
+        fs.mkdirSync(path.join(ROOT, 'uploads'), { recursive: true });
+        const stem = (base.replace(/\.[^.]+$/, '') || 'img').replace(/[^\w.\-\u4e00-\u9fa5]+/g, '_');
+        const fname = `${Date.now()}-${stem}${ext}`;
+        fs.writeFileSync(path.join(ROOT, 'uploads', fname), buf);
+        return json(res, 200, { ok: true, path: 'uploads/' + fname });
       }
       if (url.pathname === '/api/render' && req.method === 'POST') {
         const { template, content } = JSON.parse(await readBody(req));
