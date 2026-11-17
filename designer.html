@@ -46,6 +46,15 @@
   #panel .ph select{flex:1;}
   #status{position:fixed;right:16px;bottom:16px;background:var(--moss);color:#12231a;padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;}
   #status.show{opacity:1;}
+  #crop-modal{position:fixed;inset:0;background:rgba(0,0,0,.82);display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:100;}
+  #crop-modal.show{display:flex;}
+  #crop-stage{position:relative;overflow:hidden;line-height:0;border:1px solid var(--line);}
+  #crop-stage img{display:block;user-select:none;-webkit-user-drag:none;}
+  #crop-box{position:absolute;border:2px solid var(--accent);box-shadow:0 0 0 9999px rgba(0,0,0,.55);pointer-events:none;}
+  #crop-handle{position:absolute;width:16px;height:16px;background:var(--accent);border-radius:3px;cursor:nwse-resize;touch-action:none;}
+  #crop-bar{display:flex;gap:12px;}
+  #crop-bar button{border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:8px 22px;border-radius:8px;cursor:pointer;font-size:14px;}
+  #crop-bar button.primary{background:var(--moss);border-color:var(--moss);color:#12231a;font-weight:600;}
 </style>
 </head>
 <body>
@@ -66,6 +75,11 @@
   <aside id="panel"></aside>
 </main>
 <div id="status"></div>
+
+<div id="crop-modal">
+  <div id="crop-stage"><img id="crop-img" alt=""><div id="crop-box"></div><div id="crop-handle"></div></div>
+  <div id="crop-bar"><button onclick="cropCancel()">取消</button><button class="primary" onclick="cropApply()">确定裁剪</button></div>
+</div>
 
 <script>
 const FACE = { 'Smiley Sans': 'Smiley', 'Noto Serif': 'NotoSerif', 'Noto Sans': 'NotoSans', 'Noto Sans SC': 'NotoSC' };
@@ -239,6 +253,8 @@ function populatePanel(el) {
       <div style="flex:1;min-width:0"><label>高</label><input type="number" id="p-h" value="${el.h}" oninput="commitSize('h', +this.value)"></div>
     </div>
     ${isImage ? `<div class="row inline" style="margin-top:8px"><input type="checkbox" id="p-natural" ${el.naturalSize ? 'checked' : ''} onchange="toggleNatural(this.checked)"><label style="margin:0">上传时用图片原始尺寸</label></div>` : ''}
+    ${isImage ? `<div class="row" style="margin-top:8px"><button type="button" style="width:100%;padding:9px 8px;border:1px solid var(--line);border-radius:6px;background:#1c1c1c;color:var(--ink);cursor:pointer;font-size:13px" onclick="openCrop()">✂️ 截图裁剪（框选保留一部分）</button></div>` : ''}
+    ${isImage && el.preCropSrc ? `<div class="row"><button type="button" style="width:100%;padding:7px 8px;border:1px dashed var(--line);border-radius:6px;background:#1c1c1c;color:var(--muted);cursor:pointer;font-size:12px" onclick="restoreOriginal()">↺ 恢复裁剪前的原图</button></div>` : ''}
     <div class="btnrow">
       <button onclick="reorder(-1)">上移</button>
       <button onclick="reorder(1)">下移</button>
@@ -302,6 +318,96 @@ async function toggleNatural(checked) {
     img.src = resolveSrc(el.src);
   }
 }
+
+let crop = null;
+function openCrop() {
+  const el = selectedEl();
+  if (!el || el.type !== 'image') return;
+  if (!el.src) { toast('先选一张图片'); return; }
+  const src = resolveSrc(el.src);
+  const img = new Image();
+  img.onload = () => {
+    const maxW = window.innerWidth * 0.82, maxH = window.innerHeight * 0.7;
+    const s = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1);
+    const dispW = Math.max(1, Math.round(img.naturalWidth * s)), dispH = Math.max(1, Math.round(img.naturalHeight * s));
+    crop = { img, dispW, dispH, box: { x: 0, y: 0, w: dispW, h: dispH } };
+    const ci = $('crop-img'); ci.src = src; ci.style.width = dispW + 'px'; ci.style.height = dispH + 'px';
+    const stage = $('crop-stage'); stage.style.width = dispW + 'px'; stage.style.height = dispH + 'px';
+    $('crop-modal').classList.add('show');
+    drawCropBox();
+  };
+  img.onerror = () => toast('图片加载失败');
+  img.src = src;
+}
+function drawCropBox() {
+  if (!crop) return;
+  const b = crop.box, box = $('crop-box'), h = $('crop-handle');
+  box.style.left = b.x + 'px'; box.style.top = b.y + 'px'; box.style.width = b.w + 'px'; box.style.height = b.h + 'px';
+  h.style.left = (b.x + b.w - 9) + 'px'; h.style.top = (b.y + b.h - 9) + 'px';
+}
+function cropCancel() { $('crop-modal').classList.remove('show'); crop = null; }
+async function cropApply() {
+  if (!crop) return;
+  const el = selectedEl();
+  if (!el) return;
+  const scale = crop.img.naturalWidth / crop.dispW;
+  const b = crop.box;
+  const sx = Math.round(b.x * scale), sy = Math.round(b.y * scale);
+  const sw = Math.max(1, Math.round(b.w * scale)), sh = Math.max(1, Math.round(b.h * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = sw; canvas.height = sh;
+  canvas.getContext('2d').drawImage(crop.img, sx, sy, sw, sh, 0, 0, sw, sh);
+  const blob = await new Promise((r) => canvas.toBlob(r, 'image/png'));
+  if (!blob) { toast('裁剪失败'); return; }
+  try {
+    const res = await fetch('/api/upload?name=cropped.png', { method: 'POST', body: blob });
+    const j = await res.json();
+    if (!j.ok) { toast('上传裁剪图失败'); return; }
+    if (!el.preCropSrc) el.preCropSrc = el.src;
+    commitField('src', j.path);
+    toast('已裁剪');
+  } catch (err) { toast(netMsg(err)); return; }
+  cropCancel();
+}
+function restoreOriginal() {
+  const el = selectedEl();
+  if (!el || !el.preCropSrc) return;
+  const orig = el.preCropSrc;
+  el.preCropSrc = '';
+  commitField('src', orig);
+  toast('已恢复原图');
+}
+(function initCrop() {
+  const stage = $('crop-stage'), handle = $('crop-handle');
+  const rel = (e) => { const r = stage.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  let drag = null;
+  stage.addEventListener('pointerdown', (e) => {
+    if (!crop) return;
+    const p = rel(e), b = crop.box;
+    if (e.target === handle) drag = { mode: 'resize', sx: p.x, sy: p.y, b: { ...b } };
+    else if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) drag = { mode: 'move', sx: p.x, sy: p.y, b: { ...b } };
+    else drag = { mode: 'draw', sx: p.x, sy: p.y };
+    e.preventDefault();
+  });
+  window.addEventListener('pointermove', (e) => {
+    if (!drag || !crop) return;
+    const p = rel(e), b = crop.box;
+    if (drag.mode === 'draw') {
+      const x = Math.min(drag.sx, p.x), y = Math.min(drag.sy, p.y);
+      const w = Math.abs(p.x - drag.sx), h = Math.abs(p.y - drag.sy);
+      crop.box = { x: clamp(x, 0, crop.dispW), y: clamp(y, 0, crop.dispH), w: clamp(w, 4, crop.dispW - Math.min(x, crop.dispW)), h: clamp(h, 4, crop.dispH - Math.min(y, crop.dispH)) };
+    } else if (drag.mode === 'move') {
+      b.x = clamp(drag.b.x + (p.x - drag.sx), 0, crop.dispW - b.w);
+      b.y = clamp(drag.b.y + (p.y - drag.sy), 0, crop.dispH - b.h);
+    } else if (drag.mode === 'resize') {
+      b.w = clamp(drag.b.w + (p.x - drag.sx), 8, crop.dispW - b.x);
+      b.h = clamp(drag.b.h + (p.y - drag.sy), 8, crop.dispH - b.y);
+    }
+    drawCropBox();
+  });
+  window.addEventListener('pointerup', () => { drag = null; });
+})();
 
 function commitField(key, value) {
   const el = selectedEl();
