@@ -15,9 +15,12 @@
   body{display:flex;flex-direction:column;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;overflow:hidden;}
   header{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);flex:0 0 auto;flex-wrap:wrap;}
   header .brand{font-family:'Smiley';font-size:20px;color:var(--accent);}
-  .tabs{display:flex;gap:4px;background:var(--panel);padding:4px;border-radius:8px;}
-  .tabs button{border:0;background:transparent;color:var(--muted);padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;}
-  .tabs button.active{background:#3a3a3a;color:var(--ink);}
+  .tabs{display:flex;gap:4px;background:var(--panel);padding:4px;border-radius:8px;flex-wrap:wrap;align-items:center;}
+  .tab{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px;color:var(--muted);user-select:none;}
+  .tab.active{background:#3a3a3a;color:var(--ink);}
+  .tab .del{opacity:.5;font-size:14px;padding:0 2px;line-height:1;}
+  .tab .del:hover{opacity:1;color:#ff9b9b;}
+  .tab.add{color:var(--moss);font-weight:600;border:1px dashed var(--line);}
   .spacer{flex:1;}
   button.tool{border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 14px;border-radius:8px;cursor:pointer;font-size:13px;}
   button.tool:hover{border-color:var(--moss);}
@@ -58,6 +61,17 @@
   #crop-bar{display:flex;gap:12px;}
   #crop-bar button{border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:8px 22px;border-radius:8px;cursor:pointer;font-size:14px;}
   #crop-bar button.primary{background:var(--moss);border-color:var(--moss);color:#12231a;font-weight:600;}
+  #page-modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:120;}
+  #page-modal.show{display:flex;}
+  .pm-box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;width:320px;display:flex;flex-direction:column;gap:12px;color:var(--ink);}
+  .pm-box h3{font-size:16px;margin:0;color:var(--accent);}
+  .pm-box label{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:4px;}
+  .pm-box input,.pm-box select{background:#1c1c1c;border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:6px 8px;font-size:13px;height:32px;}
+  .pm-size{display:flex;gap:8px;}
+  .pm-size label{flex:1;}
+  .pm-actions{display:flex;gap:8px;justify-content:flex-end;}
+  .pm-actions button{border:1px solid var(--line);background:#1c1c1c;color:var(--ink);padding:7px 16px;border-radius:6px;cursor:pointer;}
+  .pm-actions button.primary{background:var(--moss);border-color:var(--moss);color:#12231a;font-weight:600;}
 </style>
 </head>
 <body>
@@ -78,6 +92,16 @@
   <aside id="panel"></aside>
 </main>
 <div id="status"></div>
+
+<div id="page-modal">
+  <div class="pm-box">
+    <h3>新建页面</h3>
+    <label>名称<input id="pm-name" type="text" value="新页面"></label>
+    <label>类型<select id="pm-kind" onchange="pmKindChange()"><option value="cover">封面 1242×1660</option><option value="note">图文笔记 1080×1440</option><option value="custom">自定义</option></select></label>
+    <div class="pm-size"><label>宽<input id="pm-w" type="number" value="1242"></label><label>高<input id="pm-h" type="number" value="1660"></label></div>
+    <div class="pm-actions"><button onclick="closeNewPage()">取消</button><button class="primary" onclick="createPage()">创建</button></div>
+  </div>
+</div>
 
 <div id="crop-modal">
   <div id="crop-stage"><img id="crop-img" alt=""><div id="crop-box"></div><div class="crop-h" data-c="tl"></div><div class="crop-h" data-c="tr"></div><div class="crop-h" data-c="bl"></div><div class="crop-h" data-c="br"></div></div>
@@ -521,7 +545,61 @@ function del() {
 }
 
 function buildTabs() {
-  $('tabs').innerHTML = template.pages.map((a) => `<button class="${a.id === activeId ? 'active' : ''}" onclick="switchBoard('${a.id}')">${a.name} ${a.width}×${a.height}</button>`).join('');
+  const tabs = template.pages.map((a) =>
+    `<span class="tab ${a.id === activeId ? 'active' : ''}" onclick="switchBoard('${a.id}')" ondblclick="renamePage('${a.id}')" title="双击重命名">${escHtml(a.name)}<span class="del" onclick="event.stopPropagation();delPage('${a.id}')" title="删除页面">×</span></span>`
+  ).join('');
+  $('tabs').innerHTML = tabs + `<span class="tab add" onclick="openNewPage()" title="新建页面">＋</span>`;
+}
+
+function openNewPage() {
+  $('pm-name').value = '新页面';
+  $('pm-kind').value = 'cover';
+  pmKindChange();
+  $('page-modal').classList.add('show');
+  $('pm-name').focus();
+}
+function closeNewPage() { $('page-modal').classList.remove('show'); }
+function pmKindChange() {
+  const k = $('pm-kind').value;
+  if (k === 'cover') { $('pm-w').value = 1242; $('pm-h').value = 1660; }
+  else if (k === 'note') { $('pm-w').value = 1080; $('pm-h').value = 1440; }
+}
+function createPage() {
+  const name = ($('pm-name').value || '').trim() || '新页面';
+  const kind = $('pm-kind').value;
+  const w = Math.max(1, Math.round(+$('pm-w').value || 1080));
+  const h = Math.max(1, Math.round(+$('pm-h').value || 1440));
+  const page = { id: 'page-' + Date.now().toString(36), name, kind: kind === 'custom' ? 'note' : kind, width: w, height: h, background: '#FBF7F0', elements: [] };
+  template.pages.push(page);
+  activeId = page.id;
+  selectedId = null;
+  snapshot('page:add', true);
+  buildTabs(); render(); populatePanel(null);
+  closeNewPage();
+  toast('已新建页面');
+}
+function renamePage(id) {
+  const page = template.pages.find((p) => p.id === id);
+  if (!page) return;
+  const name = prompt('页面名称', page.name);
+  if (name === null) return;
+  const v = name.trim();
+  if (!v) return;
+  page.name = v;
+  snapshot('page:rename:' + id, true);
+  buildTabs();
+  toast('已重命名');
+}
+function delPage(id) {
+  if (template.pages.length <= 1) { toast('至少保留一个页面'); return; }
+  const page = template.pages.find((p) => p.id === id);
+  if (!page) return;
+  if (!confirm('删除页面「' + page.name + '」？')) return;
+  template.pages = template.pages.filter((p) => p.id !== id);
+  if (activeId === id) { activeId = template.pages[0].id; selectedId = null; }
+  snapshot('page:del:' + id, true);
+  buildTabs(); render(); populatePanel(null);
+  toast('已删除页面');
 }
 
 function switchBoard(id) {
