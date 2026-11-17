@@ -372,6 +372,14 @@ async function cropApply() {
     if (!j.ok) { toast('上传裁剪图失败'); return; }
     if (!el.preCropSrc) el.preCropSrc = el.src;
     commitField('src', j.path);
+    const ar = sw / sh;
+    let nw = el.w, nh = el.w / ar;
+    const ab = activeBoard();
+    if (nh > ab.height) { nh = ab.height; nw = ab.height * ar; }
+    if (nw > ab.width) { nw = ab.width; nh = ab.width / ar; }
+    commitField('w', Math.max(1, Math.round(nw)));
+    commitField('h', Math.max(1, Math.round(nh)));
+    const pw = $('p-w'), phh = $('p-h'); if (pw) pw.value = el.w; if (phh) phh.value = el.h;
     toast('已裁剪');
   } catch (err) { toast(netMsg(err)); return; }
   cropCancel();
