@@ -46,6 +46,10 @@
   #content-panel label code{font-size:10px;opacity:.6;}
   #content-panel input{width:100%;height:32px;background:#1c1c1c;border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:6px 8px;font-size:13px;}
   #content-panel .mini{border:1px solid var(--line);background:#1c1c1c;color:var(--ink);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer;}
+  #optionbar{display:flex;gap:4px;align-items:center;padding:6px 16px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);flex:0 0 auto;flex-wrap:wrap;}
+  #optionbar span{margin-right:6px;}
+  #optionbar button{width:30px;height:26px;border:1px solid var(--line);background:#1c1c1c;color:var(--ink);border-radius:6px;cursor:pointer;font-size:13px;padding:0;}
+  #optionbar button:hover{border-color:var(--moss);}
   #layers{flex:0 0 auto;max-height:42%;overflow-y:auto;padding:10px;border-bottom:1px solid var(--line);}
   #layers .ltitle{font-size:11px;color:var(--muted);letter-spacing:.08em;margin-bottom:6px;}
   .layer{display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:6px;font-size:12px;color:var(--ink);cursor:pointer;user-select:none;}
@@ -112,6 +116,15 @@
   <button class="tool primary" onclick="save()">保存模板</button>
   <button class="tool" onclick="exportPng()">导出 PNG</button>
 </header>
+<div id="optionbar">
+  <span>对齐</span>
+  <button onclick="alignSel('left')" title="左对齐">⇤</button>
+  <button onclick="alignSel('hcenter')" title="水平居中">↔</button>
+  <button onclick="alignSel('right')" title="右对齐">⇥</button>
+  <button onclick="alignSel('top')" title="顶部">⇡</button>
+  <button onclick="alignSel('vcenter')" title="垂直居中">↕</button>
+  <button onclick="alignSel('bottom')" title="底部">⇣</button>
+</div>
 <main>
   <aside id="content-panel"></aside>
   <div id="canvas"><div id="stage"><div id="board"></div></div></div>
@@ -315,6 +328,47 @@ function updateElementStyle(el) {
   d.style.left = el.x + 'px'; d.style.top = el.y + 'px'; d.style.width = el.w + 'px'; d.style.height = el.h + 'px';
   d.style.transform = `rotate(${el.rotate || 0}deg)`;
 }
+function snapDelta(edges, targets, th) {
+  let best = null;
+  for (const e of edges) for (const t of targets) {
+    const d = t - e;
+    if (Math.abs(d) <= th && (!best || Math.abs(d) < Math.abs(best.d))) best = { d, t };
+  }
+  return best;
+}
+function showGuides(gx, gy) {
+  const board = $('board'); if (!board) return;
+  let gv = $('guide-v'), gh = $('guide-h');
+  if (gx == null) { if (gv) gv.remove(); } else {
+    if (!gv) { gv = document.createElement('div'); gv.id = 'guide-v'; gv.style.cssText = 'position:absolute;top:0;bottom:0;width:1px;background:#ff6b8a;pointer-events:none;z-index:30;'; board.appendChild(gv); }
+    gv.style.left = gx + 'px';
+  }
+  if (gy == null) { if (gh) gh.remove(); } else {
+    if (!gh) { gh = document.createElement('div'); gh.id = 'guide-h'; gh.style.cssText = 'position:absolute;left:0;right:0;height:1px;background:#ff6b8a;pointer-events:none;z-index:30;'; board.appendChild(gh); }
+    gh.style.top = gy + 'px';
+  }
+}
+function alignSel(dir) {
+  const els = selectedEls();
+  if (!els.length) return;
+  const ab = activeBoard();
+  let x1, x2, y1, y2;
+  if (els.length > 1) { x1 = Math.min(...els.map((e) => e.x)); x2 = Math.max(...els.map((e) => e.x + e.w)); y1 = Math.min(...els.map((e) => e.y)); y2 = Math.max(...els.map((e) => e.y + e.h)); }
+  else { x1 = 0; x2 = ab.width; y1 = 0; y2 = ab.height; }
+  for (const e of els) {
+    if (dir === 'left') e.x = x1;
+    else if (dir === 'right') e.x = x2 - e.w;
+    else if (dir === 'hcenter') e.x = Math.round((x1 + x2 - e.w) / 2);
+    else if (dir === 'top') e.y = y1;
+    else if (dir === 'bottom') e.y = y2 - e.h;
+    else if (dir === 'vcenter') e.y = Math.round((y1 + y2 - e.h) / 2);
+    updateElementStyle(e);
+  }
+  positionOverlay();
+  snapshot('align:' + dir, true);
+  render();
+}
+
 function startResize(e, el, dir) {
   e.stopPropagation(); e.preventDefault();
   const s = scale();
@@ -365,15 +419,30 @@ function onPointerDown(e, el) {
   let moved = false;
   const move = (ev) => {
     moved = true;
-    const dx = Math.round((ev.clientX - startX) / s), dy = Math.round((ev.clientY - startY) / s);
+    let dx = Math.round((ev.clientX - startX) / s), dy = Math.round((ev.clientY - startY) / s);
+    const prim = starts.find((st) => st.el.id === selectedId) || starts[0];
+    let gx = null, gy = null;
+    if (prim) {
+      const ab = activeBoard();
+      const others = ab.elements.filter((e) => !starts.some((st) => st.el === e));
+      const xs = [ab.width / 2].concat(others.flatMap((e) => [e.x, e.x + e.w / 2, e.x + e.w]));
+      const ys = [ab.height / 2].concat(others.flatMap((e) => [e.y, e.y + e.h / 2, e.y + e.h]));
+      const px0 = prim.x + dx, py0 = prim.y + dy;
+      const sx = snapDelta([px0, px0 + prim.el.w / 2, px0 + prim.el.w], xs, 5);
+      const sy = snapDelta([py0, py0 + prim.el.h / 2, py0 + prim.el.h], ys, 5);
+      if (sx) { dx += sx.d; gx = sx.t; }
+      if (sy) { dy += sy.d; gy = sy.t; }
+    }
     starts.forEach((st) => { st.el.x = st.x + dx; st.el.y = st.y + dy; updateElementStyle(st.el); });
     positionOverlay();
+    showGuides(gx, gy);
     const el0 = selectedEl();
     if (el0) { const px = $('p-x'), py = $('p-y'); if (px) px.value = el0.x; if (py) py.value = el0.y; }
   };
   const up = () => {
     window.removeEventListener('pointermove', move);
     window.removeEventListener('pointerup', up);
+    showGuides(null, null);
     if (moved) snapshot('drag', true);
   };
   window.addEventListener('pointermove', move);
