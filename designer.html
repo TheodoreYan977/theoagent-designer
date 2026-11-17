@@ -115,6 +115,13 @@ function updateButtons() {
 }
 
 function toast(msg) { const s = $('status'); s.textContent = msg; s.classList.add('show'); setTimeout(() => s.classList.remove('show'), 1800); }
+const netMsg = (err) => {
+  const m = String((err && err.message) || err || '');
+  if (/Failed to fetch|NetworkError|Load failed|fetch failed/i.test(m)) {
+    return '连不上本地服务：请确认 start.bat 窗口还开着，浏览器打开的是 http://127.0.0.1:8090';
+  }
+  return '上传失败：' + m;
+};
 
 function scale() {
   const ab = activeBoard();
@@ -261,7 +268,7 @@ async function uploadImage(file) {
     if (thumb) thumb.innerHTML = '<img src="' + resolveSrc(j.path) + '" style="max-width:100%;max-height:90px;border-radius:6px;opacity:.9">';
     const inp = $('p-src'); if (inp) inp.value = j.path;
     toast('已上传');
-  } catch (err) { toast('上传失败：' + err.message); }
+  } catch (err) { toast(netMsg(err)); }
 }
 
 function commitField(key, value) {
@@ -397,7 +404,7 @@ canvasEl.addEventListener('drop', async (e) => {
     render();
     select(el.id);
     toast('已添加图片');
-  } catch (err) { toast('上传失败：' + err.message); }
+  } catch (err) { toast(netMsg(err)); }
 });
 </script>
 </body>
