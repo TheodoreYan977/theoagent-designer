@@ -232,8 +232,11 @@ function populatePanel(el) {
     <div class="grid">
       <div class="row"><label>X</label><input type="number" id="p-x" value="${el.x}" oninput="commitField('x', +this.value)"></div>
       <div class="row"><label>Y</label><input type="number" id="p-y" value="${el.y}" oninput="commitField('y', +this.value)"></div>
-      <div class="row"><label>宽</label><input type="number" id="p-w" value="${el.w}" oninput="commitField('w', +this.value)"></div>
-      <div class="row"><label>高</label><input type="number" id="p-h" value="${el.h}" oninput="commitField('h', +this.value)"></div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:10px">
+      <div style="flex:1;min-width:0"><label>宽</label><input type="number" id="p-w" value="${el.w}" oninput="commitSize('w', +this.value)"></div>
+      <button type="button" id="p-lock" onclick="toggleRatio()" title="锁定宽高比：按下后改一个，另一个按比例跟着变" style="width:36px;height:36px;flex:0 0 36px;border:1px solid ${el.ratioLock ? 'var(--moss)' : 'var(--line)'};border-radius:6px;background:${el.ratioLock ? 'var(--moss)' : '#1c1c1c'};color:${el.ratioLock ? '#12231a' : 'var(--ink)'};cursor:pointer;font-size:15px;line-height:1;padding:0">🔗</button>
+      <div style="flex:1;min-width:0"><label>高</label><input type="number" id="p-h" value="${el.h}" oninput="commitSize('h', +this.value)"></div>
     </div>
     ${isImage ? `<div class="row inline" style="margin-top:8px"><input type="checkbox" id="p-natural" ${el.naturalSize ? 'checked' : ''} onchange="toggleNatural(this.checked)"><label style="margin:0">上传时用图片原始尺寸</label></div>` : ''}
     <div class="btnrow">
@@ -329,6 +332,29 @@ function commitField(key, value) {
     if (['w'].includes(key)) d.style.width = el.w + 'px';
     if (['h'].includes(key)) d.style.height = el.h + 'px';
   }
+}
+
+function commitSize(key, value) {
+  const el = selectedEl();
+  if (!el || !(value > 0)) return;
+  const ratio = (el.w && el.h) ? el.w / el.h : 1;
+  el[key] = value;
+  if (el.ratioLock) {
+    if (key === 'w') el.h = Math.max(1, Math.round(value / ratio));
+    else el.w = Math.max(1, Math.round(value * ratio));
+  }
+  snapshot(key + ':' + el.id);
+  const d = document.querySelector(`[data-id="${CSS.escape(el.id)}"]`);
+  if (d) { d.style.width = el.w + 'px'; d.style.height = el.h + 'px'; }
+  const pw = $('p-w'), phh = $('p-h');
+  if (pw) pw.value = el.w; if (phh) phh.value = el.h;
+}
+function toggleRatio() {
+  const el = selectedEl();
+  if (!el) return;
+  el.ratioLock = !el.ratioLock;
+  snapshot('ratioLock:' + el.id);
+  populatePanel(el);
 }
 
 function addElement(type) {
