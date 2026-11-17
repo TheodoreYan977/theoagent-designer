@@ -128,7 +128,7 @@
 
 <script>
 const FACE = { 'Smiley Sans': 'Smiley', 'Noto Serif': 'NotoSerif', 'Noto Sans': 'NotoSans', 'Noto Sans SC': 'NotoSC' };
-let template = null, sample = null, activeId = 'cover', selectedId = null;
+let template = null, sample = null, activeId = 'cover', selectedId = null, selectedIds = [];
 let history = [], index = -1, lastSnapKey = '', lastSnapTime = 0;
 let viewZoom = 1, panX = 0, panY = 0;
 const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -160,7 +160,7 @@ function applyState(snap) {
   render();
   if (selectedId) {
     const el = activeBoard().elements.find((e) => e.id === selectedId);
-    if (el) select(el.id); else { selectedId = null; populatePanel(null); }
+    if (el) select(el.id); else { clearSel(); populatePanel(null); }
   } else {
     populatePanel(null);
   }
@@ -217,7 +217,8 @@ function elementDiv(el) {
     style.whiteSpace = 'pre-line';
     style.overflow = 'hidden';
   }
-  if (el.id === selectedId) d.classList.add('selected');
+  if (selectedIds.includes(el.id)) d.classList.add('selected');
+  if (el.locked) d.style.pointerEvents = 'none';
   d.addEventListener('pointerdown', (e) => onPointerDown(e, el));
   return d;
 }
@@ -256,7 +257,7 @@ function renderLayers() {
 }
 function renameLayer(id) { const ab = activeBoard(); const el = ab.elements.find((e) => e.id === id); if (!el) return; const v = prompt('图层名称', elName(el)); if (v === null) return; el.name = v.trim() || elName(el); snapshot('layer:rename:' + id, true); render(); }
 function toggleVisible(id) { const ab = activeBoard(); const el = ab.elements.find((e) => e.id === id); if (!el) return; el.visible = el.visible === false ? true : false; snapshot('layer:visible:' + id, true); render(); }
-function toggleLock(id) { const ab = activeBoard(); const el = ab.elements.find((e) => e.id === id); if (!el) return; el.locked = !el.locked; if (el.locked && selectedId === id) selectedId = null; snapshot('layer:lock:' + id, true); render(); populatePanel(null); }
+function toggleLock(id) { const ab = activeBoard(); const el = ab.elements.find((e) => e.id === id); if (!el) return; el.locked = !el.locked; if (el.locked) { const i = selectedIds.indexOf(id); if (i >= 0) selectedIds.splice(i, 1); if (selectedId === id) selectedId = selectedIds[selectedIds.length - 1] || null; } snapshot('layer:lock:' + id, true); render(); populatePanel(selectedEl()); }
 let dragLayerId = null;
 function layerDragStart(e, id) { dragLayerId = id; try { e.dataTransfer.effectAllowed = 'move'; } catch (x) {} }
 function layerDrop(e, targetId) {
@@ -277,7 +278,7 @@ function renderSelection() {
   const board = $('board');
   const old = $('sel-overlay'); if (old) old.remove();
   const el = selectedEl();
-  if (!el || el.visible === false) return;
+  if (!el || el.visible === false || selectedIds.length !== 1) return;
   const ov = document.createElement('div');
   ov.id = 'sel-overlay';
   ov.style.left = el.x + 'px'; ov.style.top = el.y + 'px'; ov.style.width = el.w + 'px'; ov.style.height = el.h + 'px';
@@ -346,36 +347,53 @@ function startRotate(e, el) {
 }
 
 function onPointerDown(e, el) {
+  e.stopPropagation();
+  if (e.shiftKey) { toggleSelect(el.id); return; }
+  if (el.locked) { select(el.id); return; }
   select(el.id);
-  if (el.locked) return;
-  const startX = e.clientX, startY = e.clientY, elX = el.x, elY = el.y, s = scale();
+  const s = scale();
+  const startX = e.clientX, startY = e.clientY;
+  const starts = selectedEls().map((x) => ({ el: x, x: x.x, y: x.y }));
   let moved = false;
   const move = (ev) => {
     moved = true;
-    el.x = Math.round(elX + (ev.clientX - startX) / s);
-    el.y = Math.round(elY + (ev.clientY - startY) / s);
-    const d = document.querySelector(`[data-id="${CSS.escape(el.id)}"]`);
-    if (d) { d.style.left = el.x + 'px'; d.style.top = el.y + 'px'; }
-    const px = $('p-x'), py = $('p-y');
-    if (px) px.value = el.x;
-    if (py) py.value = el.y;
+    const dx = Math.round((ev.clientX - startX) / s), dy = Math.round((ev.clientY - startY) / s);
+    starts.forEach((st) => { st.el.x = st.x + dx; st.el.y = st.y + dy; updateElementStyle(st.el); });
     positionOverlay();
+    const el0 = selectedEl();
+    if (el0) { const px = $('p-x'), py = $('p-y'); if (px) px.value = el0.x; if (py) py.value = el0.y; }
   };
   const up = () => {
     window.removeEventListener('pointermove', move);
     window.removeEventListener('pointerup', up);
-    if (moved) snapshot('drag:' + el.id, true);
+    if (moved) snapshot('drag', true);
   };
   window.addEventListener('pointermove', move);
   window.addEventListener('pointerup', up);
   e.preventDefault();
 }
 
+const selectedEls = () => selectedIds.map((id) => activeBoard().elements.find((e) => e.id === id)).filter(Boolean);
+function applySelectionHighlight() {
+  document.querySelectorAll('#board .el').forEach((d) => d.classList.toggle('selected', selectedIds.includes(d.dataset.id)));
+}
+function clearSel() { selectedId = null; selectedIds = []; applySelectionHighlight(); }
 function select(id) {
+  const ab = activeBoard();
+  const el = ab.elements.find((e) => e.id === id);
+  if (el && el.group) selectedIds = ab.elements.filter((e) => e.group === el.group).map((e) => e.id);
+  else selectedIds = [id];
   selectedId = id;
-  document.querySelectorAll('#board .el.selected').forEach((d) => d.classList.remove('selected'));
-  const d = document.querySelector(`[data-id="${CSS.escape(id)}"]`);
-  if (d) d.classList.add('selected');
+  applySelectionHighlight();
+  populatePanel(selectedEl());
+  renderLayers();
+  renderSelection();
+}
+function toggleSelect(id) {
+  const i = selectedIds.indexOf(id);
+  if (i >= 0) selectedIds.splice(i, 1); else selectedIds.push(id);
+  selectedId = selectedIds[selectedIds.length - 1] || null;
+  applySelectionHighlight();
   populatePanel(selectedEl());
   renderLayers();
   renderSelection();
@@ -668,12 +686,11 @@ function reorder(dir) {
 
 function del() {
   const ab = activeBoard();
-  const i = ab.elements.findIndex((e) => e.id === selectedId);
-  if (i < 0) return;
-  const delId = ab.elements[i].id;
-  ab.elements.splice(i, 1);
-  selectedId = null;
-  snapshot('del:' + delId, true);
+  const ids = selectedIds.length ? selectedIds.slice() : (selectedId ? [selectedId] : []);
+  if (!ids.length) return;
+  ab.elements = ab.elements.filter((e) => !ids.includes(e.id));
+  clearSel();
+  snapshot('del', true);
   render();
   populatePanel(null);
 }
@@ -706,7 +723,7 @@ function createPage() {
   const page = { id: 'page-' + Date.now().toString(36), name, kind: kind === 'custom' ? 'note' : kind, width: w, height: h, background: '#FBF7F0', elements: [] };
   template.pages.push(page);
   activeId = page.id;
-  selectedId = null;
+  clearSel();
   snapshot('page:add', true);
   buildTabs(); render(); populatePanel(null);
   closeNewPage();
@@ -730,7 +747,7 @@ function delPage(id) {
   if (!page) return;
   if (!confirm('删除页面「' + page.name + '」？')) return;
   template.pages = template.pages.filter((p) => p.id !== id);
-  if (activeId === id) { activeId = template.pages[0].id; selectedId = null; }
+  if (activeId === id) { activeId = template.pages[0].id; clearSel(); }
   snapshot('page:del:' + id, true);
   buildTabs(); render(); populatePanel(null);
   toast('已删除页面');
@@ -738,7 +755,7 @@ function delPage(id) {
 
 function switchBoard(id) {
   activeId = id;
-  selectedId = null;
+  clearSel();
   buildTabs();
   render();
   populatePanel(null);
@@ -771,13 +788,69 @@ async function exportPng() {
   window.addEventListener('resize', render);
 })();
 
+/* ---- 多选 / 复制 / 组合 / 框选 ---- */
+let clipboard = [];
+function copySel() { const els = selectedEls(); if (!els.length) return; clipboard = els.map((e) => clone(e)); toast('已复制 ' + clipboard.length + ' 个元素'); }
+function pasteClip() {
+  if (!clipboard.length) return;
+  const ab = activeBoard();
+  const news = clipboard.map((e) => { const c = clone(e); c.id = 'el-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6); c.x += 16; c.y += 16; return c; });
+  ab.elements.push(...news);
+  selectedIds = news.map((e) => e.id); selectedId = selectedIds[selectedIds.length - 1];
+  applySelectionHighlight(); snapshot('paste', true); render(); populatePanel(selectedEl()); toast('已粘贴');
+}
+function duplicateSel() { copySel(); pasteClip(); }
+function groupSel() {
+  if (selectedIds.length < 2) { toast('至少选中 2 个元素再组合'); return; }
+  const gid = 'g-' + Date.now().toString(36);
+  activeBoard().elements.forEach((e) => { if (selectedIds.includes(e.id)) e.group = gid; });
+  snapshot('group', true); render(); toast('已组合');
+}
+function ungroupSel() {
+  let n = 0;
+  activeBoard().elements.forEach((e) => { if (selectedIds.includes(e.id) && e.group) { e.group = null; n++; } });
+  snapshot('ungroup', true); render(); toast(n ? '已取消组合' : '没有组合可选');
+}
+function startBoxSelect(e) {
+  const st = $('stage'); if (!st) return;
+  const s = scale();
+  const r0 = st.getBoundingClientRect();
+  const bx = (e.clientX - r0.left) / s, by = (e.clientY - r0.top) / s;
+  const box = document.createElement('div');
+  box.style.cssText = 'position:absolute;border:1px dashed var(--moss);background:rgba(143,183,154,.12);pointer-events:none;z-index:20;';
+  $('board').appendChild(box);
+  const move = (ev) => {
+    const r = st.getBoundingClientRect();
+    const cx = (ev.clientX - r.left) / s, cy = (ev.clientY - r.top) / s;
+    box.style.left = Math.min(bx, cx) + 'px'; box.style.top = Math.min(by, cy) + 'px';
+    box.style.width = Math.abs(cx - bx) + 'px'; box.style.height = Math.abs(cy - by) + 'px';
+  };
+  const up = (ev) => {
+    window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+    const r = st.getBoundingClientRect();
+    const cx = (ev.clientX - r.left) / s, cy = (ev.clientY - r.top) / s;
+    const x1 = Math.min(bx, cx), y1 = Math.min(by, cy), x2 = Math.max(bx, cx), y2 = Math.max(by, cy);
+    box.remove();
+    const ab = activeBoard();
+    const hits = ab.elements.filter((el) => el.visible !== false && !el.locked && el.x < x2 && el.x + el.w > x1 && el.y < y2 && el.y + el.h > y1).map((el) => el.id);
+    if (hits.length) { selectedIds = hits; selectedId = hits[hits.length - 1]; applySelectionHighlight(); renderLayers(); renderSelection(); populatePanel(selectedEl()); }
+  };
+  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+}
+
 window.addEventListener('keydown', (e) => {
-  if (!(e.ctrlKey || e.metaKey)) return;
   const tag = (document.activeElement && document.activeElement.tagName) || '';
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return; // 文本框内保留原生撤销
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
   const k = e.key.toLowerCase();
+  if (e.key === 'Delete' || e.key === 'Backspace') { if (selectedIds.length) { e.preventDefault(); del(); } return; }
+  if (!(e.ctrlKey || e.metaKey)) return;
   if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
   else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); redo(); }
+  else if (k === 'c') { e.preventDefault(); copySel(); }
+  else if (k === 'v') { e.preventDefault(); pasteClip(); }
+  else if (k === 'd') { e.preventDefault(); duplicateSel(); }
+  else if (k === 'g' && !e.shiftKey) { e.preventDefault(); groupSel(); }
+  else if (k === 'g' && e.shiftKey) { e.preventDefault(); ungroupSel(); }
 });
 
 // 拖拽图片文件到画布 = 上传并新增图片元素
@@ -820,7 +893,8 @@ $('canvas').addEventListener('dblclick', (e) => {
   viewZoom = 1; panX = 0; panY = 0; render(); toast('已复位视图');
 });
 $('canvas').addEventListener('pointerdown', (e) => {
-  if (e.target.closest('.el')) return;
+  if (e.target.closest('.el') || e.target.closest('.rz') || e.target.closest('.rz-rotate')) return;
+  if (e.shiftKey) { startBoxSelect(e); return; }
   const sx = e.clientX, sy = e.clientY, ox = panX, oy = panY;
   const move = (ev) => { panX = ox + (ev.clientX - sx); panY = oy + (ev.clientY - sy); applyPan(); };
   const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
