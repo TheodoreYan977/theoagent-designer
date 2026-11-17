@@ -69,7 +69,7 @@ function substitute(s, content) {
 
 function elementHtml(el, content) {
   const px = (v) => `${v}px`;
-  const pos = `position:absolute;left:${px(el.x)};top:${px(el.y)};`;
+  const pos = `position:absolute;left:${px(el.x)};top:${px(el.y)};transform:rotate(${el.rotate || 0}deg);`;
   if (el.type === 'image') {
     const src = resolveFile(substitute(el.src, content));
     return `<img id="${esc(el.id)}" style="${pos}width:${px(el.w)};height:${px(el.h)};object-fit:${el.fit || 'cover'};border-radius:${px(el.radius || 0)};display:block;" src="${esc(src)}" alt="">`;

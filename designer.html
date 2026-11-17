@@ -32,6 +32,12 @@
   #board .el{position:absolute;cursor:move;}
   #board .el.selected{outline:2px solid var(--accent);outline-offset:1px;}
   #board .el:hover{outline:1px dashed var(--moss);}
+  #sel-overlay{position:absolute;pointer-events:none;z-index:10;transform-origin:center;}
+  #sel-overlay .rz{position:absolute;width:12px;height:12px;background:#fff;border:2px solid var(--accent);border-radius:2px;transform:translate(-50%,-50%);pointer-events:auto;}
+  #sel-overlay .rz-rotate{position:absolute;left:50%;top:-30px;width:14px;height:14px;border-radius:50%;background:var(--moss);cursor:grab;transform:translate(-50%,-50%);pointer-events:auto;}
+  .rz-nw{left:0;top:0;cursor:nwse-resize}.rz-n{left:50%;top:0;cursor:ns-resize}.rz-ne{left:100%;top:0;cursor:nesw-resize}
+  .rz-w{left:0;top:50%;cursor:ew-resize}.rz-e{left:100%;top:50%;cursor:ew-resize}
+  .rz-sw{left:0;top:100%;cursor:nesw-resize}.rz-s{left:50%;top:100%;cursor:ns-resize}.rz-se{left:100%;top:100%;cursor:nwse-resize}
   #panel{width:300px;flex:0 0 300px;display:flex;flex-direction:column;border-left:1px solid var(--line);background:var(--panel);overflow:hidden;}
   #layers{flex:0 0 auto;max-height:42%;overflow-y:auto;padding:10px;border-bottom:1px solid var(--line);}
   #layers .ltitle{font-size:11px;color:var(--muted);letter-spacing:.08em;margin-bottom:6px;}
@@ -190,6 +196,7 @@ function elementDiv(el) {
   const style = d.style;
   style.left = el.x + 'px'; style.top = el.y + 'px'; style.width = el.w + 'px'; style.height = el.h + 'px';
   if (el.visible === false) style.display = 'none';
+  style.transform = `rotate(${el.rotate || 0}deg)`;
   if (el.type === 'image') {
     style.backgroundImage = `url("${resolveSrc(el.src)}")`;
     style.backgroundSize = el.fit === 'contain' ? 'contain' : 'cover';
@@ -230,6 +237,7 @@ function render() {
   board.innerHTML = '';
   for (const el of ab.elements) board.appendChild(elementDiv(el));
   renderLayers();
+  renderSelection();
 }
 
 function elName(el) { return el.name || (el.type === 'text' ? '文字' : el.type === 'image' ? '图片' : '色块'); }
@@ -265,6 +273,78 @@ function layerDrop(e, targetId) {
   render();
 }
 
+function renderSelection() {
+  const board = $('board');
+  const old = $('sel-overlay'); if (old) old.remove();
+  const el = selectedEl();
+  if (!el || el.visible === false) return;
+  const ov = document.createElement('div');
+  ov.id = 'sel-overlay';
+  ov.style.left = el.x + 'px'; ov.style.top = el.y + 'px'; ov.style.width = el.w + 'px'; ov.style.height = el.h + 'px';
+  ov.style.transform = `rotate(${el.rotate || 0}deg)`;
+  for (const dir of ['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se']) {
+    const h = document.createElement('div');
+    h.className = 'rz rz-' + dir;
+    h.addEventListener('pointerdown', (ev) => startResize(ev, el, dir));
+    ov.appendChild(h);
+  }
+  const rh = document.createElement('div');
+  rh.className = 'rz-rotate';
+  rh.addEventListener('pointerdown', (ev) => startRotate(ev, el));
+  ov.appendChild(rh);
+  board.appendChild(ov);
+}
+function positionOverlay() {
+  const ov = $('sel-overlay'), el = selectedEl();
+  if (!ov || !el) return;
+  ov.style.left = el.x + 'px'; ov.style.top = el.y + 'px'; ov.style.width = el.w + 'px'; ov.style.height = el.h + 'px';
+  ov.style.transform = `rotate(${el.rotate || 0}deg)`;
+}
+function updateElementStyle(el) {
+  const d = document.querySelector(`[data-id="${CSS.escape(el.id)}"]`);
+  if (!d) return;
+  d.style.left = el.x + 'px'; d.style.top = el.y + 'px'; d.style.width = el.w + 'px'; d.style.height = el.h + 'px';
+  d.style.transform = `rotate(${el.rotate || 0}deg)`;
+}
+function startResize(e, el, dir) {
+  e.stopPropagation(); e.preventDefault();
+  const s = scale();
+  const sx = e.clientX, sy = e.clientY;
+  const o = { x: el.x, y: el.y, w: el.w, h: el.h };
+  const move = (ev) => {
+    const dx = (ev.clientX - sx) / s, dy = (ev.clientY - sy) / s;
+    let x = o.x, y = o.y, w = o.w, h = o.h;
+    if (dir.includes('e')) w = o.w + dx;
+    if (dir.includes('s')) h = o.h + dy;
+    if (dir.includes('w')) { w = o.w - dx; x = o.x + dx; }
+    if (dir.includes('n')) { h = o.h - dy; y = o.y + dy; }
+    w = Math.max(8, Math.round(w)); h = Math.max(8, Math.round(h));
+    if (dir.includes('w')) x = Math.round(o.x + o.w - w);
+    if (dir.includes('n')) y = Math.round(o.y + o.h - h);
+    el.x = x; el.y = y; el.w = w; el.h = h;
+    updateElementStyle(el); positionOverlay();
+  };
+  const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); snapshot('resize:' + el.id, true); };
+  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+}
+function startRotate(e, el) {
+  e.stopPropagation(); e.preventDefault();
+  const d = document.querySelector(`[data-id="${CSS.escape(el.id)}"]`);
+  if (!d) return;
+  const r = d.getBoundingClientRect();
+  const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  const startAng = Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI;
+  const startRot = el.rotate || 0;
+  const move = (ev) => {
+    let rot = Math.round(startRot + (Math.atan2(ev.clientY - cy, ev.clientX - cx) * 180 / Math.PI - startAng));
+    if (ev.shiftKey) rot = Math.round(rot / 15) * 15;
+    el.rotate = rot;
+    updateElementStyle(el); positionOverlay();
+  };
+  const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); snapshot('rotate:' + el.id, true); };
+  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+}
+
 function onPointerDown(e, el) {
   select(el.id);
   if (el.locked) return;
@@ -279,6 +359,7 @@ function onPointerDown(e, el) {
     const px = $('p-x'), py = $('p-y');
     if (px) px.value = el.x;
     if (py) py.value = el.y;
+    positionOverlay();
   };
   const up = () => {
     window.removeEventListener('pointermove', move);
@@ -297,6 +378,7 @@ function select(id) {
   if (d) d.classList.add('selected');
   populatePanel(selectedEl());
   renderLayers();
+  renderSelection();
 }
 
 function populatePanel(el) {
