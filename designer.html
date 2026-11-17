@@ -51,7 +51,9 @@
   #crop-stage{position:relative;overflow:hidden;line-height:0;border:1px solid var(--line);}
   #crop-stage img{display:block;user-select:none;-webkit-user-drag:none;}
   #crop-box{position:absolute;border:2px solid var(--accent);box-shadow:0 0 0 9999px rgba(0,0,0,.55);pointer-events:none;}
-  #crop-handle{position:absolute;width:16px;height:16px;background:var(--accent);border-radius:3px;cursor:nwse-resize;touch-action:none;}
+  .crop-h{position:absolute;width:16px;height:16px;background:var(--accent);border-radius:3px;pointer-events:auto;touch-action:none;z-index:3;}
+  .crop-h[data-c="tl"],.crop-h[data-c="br"]{cursor:nwse-resize;}
+  .crop-h[data-c="tr"],.crop-h[data-c="bl"]{cursor:nesw-resize;}
   #crop-bar{display:flex;gap:12px;}
   #crop-bar button{border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:8px 22px;border-radius:8px;cursor:pointer;font-size:14px;}
   #crop-bar button.primary{background:var(--moss);border-color:var(--moss);color:#12231a;font-weight:600;}
@@ -77,7 +79,7 @@
 <div id="status"></div>
 
 <div id="crop-modal">
-  <div id="crop-stage"><img id="crop-img" alt=""><div id="crop-box"></div><div id="crop-handle"></div></div>
+  <div id="crop-stage"><img id="crop-img" alt=""><div id="crop-box"></div><div class="crop-h" data-c="tl"></div><div class="crop-h" data-c="tr"></div><div class="crop-h" data-c="bl"></div><div class="crop-h" data-c="br"></div></div>
   <div id="crop-bar"><button onclick="cropCancel()">取消</button><button class="primary" onclick="cropApply()">确定裁剪</button></div>
 </div>
 
@@ -341,9 +343,14 @@ function openCrop() {
 }
 function drawCropBox() {
   if (!crop) return;
-  const b = crop.box, box = $('crop-box'), h = $('crop-handle');
+  const b = crop.box, box = $('crop-box');
   box.style.left = b.x + 'px'; box.style.top = b.y + 'px'; box.style.width = b.w + 'px'; box.style.height = b.h + 'px';
-  h.style.left = (b.x + b.w - 9) + 'px'; h.style.top = (b.y + b.h - 9) + 'px';
+  const HS = 16;
+  const setH = (c, left, top) => { const h = document.querySelector(`.crop-h[data-c="${c}"]`); if (h) { h.style.left = left + 'px'; h.style.top = top + 'px'; } };
+  setH('tl', b.x, b.y);
+  setH('tr', b.x + b.w - HS, b.y);
+  setH('bl', b.x, b.y + b.h - HS);
+  setH('br', b.x + b.w - HS, b.y + b.h - HS);
 }
 function cropCancel() { $('crop-modal').classList.remove('show'); crop = null; }
 async function cropApply() {
@@ -378,14 +385,15 @@ function restoreOriginal() {
   toast('已恢复原图');
 }
 (function initCrop() {
-  const stage = $('crop-stage'), handle = $('crop-handle');
+  const stage = $('crop-stage');
   const rel = (e) => { const r = stage.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   let drag = null;
   stage.addEventListener('pointerdown', (e) => {
     if (!crop) return;
     const p = rel(e), b = crop.box;
-    if (e.target === handle) drag = { mode: 'resize', sx: p.x, sy: p.y, b: { ...b } };
+    const hEl = e.target.closest ? e.target.closest('.crop-h') : null;
+    if (hEl) drag = { mode: 'resize', corner: hEl.dataset.c, sx: p.x, sy: p.y, b: { ...b } };
     else if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) drag = { mode: 'move', sx: p.x, sy: p.y, b: { ...b } };
     else drag = { mode: 'draw', sx: p.x, sy: p.y };
     e.preventDefault();
@@ -401,8 +409,15 @@ function restoreOriginal() {
       b.x = clamp(drag.b.x + (p.x - drag.sx), 0, crop.dispW - b.w);
       b.y = clamp(drag.b.y + (p.y - drag.sy), 0, crop.dispH - b.h);
     } else if (drag.mode === 'resize') {
-      b.w = clamp(drag.b.w + (p.x - drag.sx), 8, crop.dispW - b.x);
-      b.h = clamp(drag.b.h + (p.y - drag.sy), 8, crop.dispH - b.y);
+      const o = drag.b, c = drag.corner;
+      const right = o.x + o.w, bottom = o.y + o.h;
+      const px = clamp(p.x, 0, crop.dispW), py = clamp(p.y, 0, crop.dispH);
+      let nx = o.x, ny = o.y, nw = o.w, nh = o.h;
+      if (c === 'tl') { nx = Math.min(px, right - 8); ny = Math.min(py, bottom - 8); nw = right - nx; nh = bottom - ny; }
+      else if (c === 'tr') { ny = Math.min(py, bottom - 8); nw = clamp(px - o.x, 8, crop.dispW - o.x); nh = bottom - ny; }
+      else if (c === 'bl') { nx = Math.min(px, right - 8); nw = right - nx; nh = clamp(py - o.y, 8, crop.dispH - o.y); }
+      else { nw = clamp(px - o.x, 8, crop.dispW - o.x); nh = clamp(py - o.y, 8, crop.dispH - o.y); }
+      crop.box = { x: nx, y: ny, w: nw, h: nh };
     }
     drawCropBox();
   });
