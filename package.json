@@ -1,0 +1,13 @@
+{
+  "name": "theoagent-designer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "TheoAgent 小红书图文设计器：本地拖拽排版，一键导出封面/图文 PNG",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "puppeteer-core": "^25.17.0"
+  }
+}

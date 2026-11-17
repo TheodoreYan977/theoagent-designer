@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TheoAgent 图文设计器</title>
+<style>
+  :root{--bg:#1f1f1f;--panel:#2a2a2a;--line:#3a3a3a;--ink:#e8e6e1;--muted:#9a978f;--accent:#facbc6;--moss:#8fb79a;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  @font-face{font-family:'Smiley';src:url('/fonts/SmileySans.ttf') format('truetype');font-weight:400;}
+  @font-face{font-family:'NotoSerif';src:url('/fonts/NotoSerif-VF.ttf') format('truetype');font-weight:100 900;}
+  @font-face{font-family:'NotoSans';src:url('/fonts/NotoSans-VF.ttf') format('truetype');font-weight:100 900;}
+  @font-face{font-family:'NotoSC';src:url('/fonts/NotoSansSC-VF.ttf') format('truetype');font-weight:100 900;}
+  html,body{height:100%;}
+  body{display:flex;flex-direction:column;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;overflow:hidden;}
+  header{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);flex:0 0 auto;flex-wrap:wrap;}
+  header .brand{font-family:'Smiley';font-size:20px;color:var(--accent);}
+  .tabs{display:flex;gap:4px;background:var(--panel);padding:4px;border-radius:8px;}
+  .tabs button{border:0;background:transparent;color:var(--muted);padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;}
+  .tabs button.active{background:#3a3a3a;color:var(--ink);}
+  .spacer{flex:1;}
+  button.tool{border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 14px;border-radius:8px;cursor:pointer;font-size:13px;}
+  button.tool:hover{border-color:var(--moss);}
+  button.tool.primary{background:var(--moss);border-color:var(--moss);color:#12231a;font-weight:600;}
+  main{flex:1;display:flex;min-height:0;}
+  #canvas{flex:1;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:24px;}
+  #stage{position:relative;box-shadow:0 8px 40px rgba(0,0,0,.5);flex:0 0 auto;}
+  #board{position:absolute;left:0;top:0;transform-origin:0 0;}
+  #board .el{position:absolute;cursor:move;}
+  #board .el.selected{outline:2px solid var(--accent);outline-offset:1px;}
+  #board .el:hover{outline:1px dashed var(--moss);}
+  #panel{width:300px;flex:0 0 300px;border-left:1px solid var(--line);background:var(--panel);overflow-y:auto;padding:14px;}
+  #panel .empty{color:var(--muted);padding:20px 0;text-align:center;}
+  #panel .row{margin-bottom:10px;}
+  #panel label{display:block;font-size:12px;color:var(--muted);margin-bottom:3px;}
+  #panel input[type=text],#panel input[type=number],#panel select,#panel textarea{width:100%;background:#1c1c1c;border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:6px 8px;font-size:13px;}
+  #panel textarea{min-height:72px;resize:vertical;font-family:inherit;line-height:1.5;}
+  #panel input[type=color]{width:100%;height:32px;border:1px solid var(--line);border-radius:6px;background:#1c1c1c;padding:2px;cursor:pointer;}
+  #panel .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  #panel .inline{display:flex;gap:8px;align-items:center;}
+  #panel .inline input[type=checkbox]{width:auto;}
+  #panel .btnrow{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;}
+  #panel .btnrow button{flex:1;border:1px solid var(--line);background:#1c1c1c;color:var(--ink);padding:7px 8px;border-radius:6px;cursor:pointer;font-size:12px;min-width:60px;}
+  #panel .btnrow button.danger{color:#ff9b9b;border-color:#5a3232;}
+  #panel .ph{display:flex;gap:6px;}
+  #panel .ph select{flex:1;}
+  #status{position:fixed;right:16px;bottom:16px;background:var(--moss);color:#12231a;padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;}
+  #status.show{opacity:1;}
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">TheoAgent 图文设计器</span>
+  <div class="tabs" id="tabs"></div>
+  <div class="spacer"></div>
+  <button class="tool" onclick="addElement('text')">＋文字</button>
+  <button class="tool" onclick="addElement('image')">＋图片</button>
+  <button class="tool" onclick="addElement('rect')">＋色块</button>
+  <button class="tool" id="btn-undo" onclick="undo()">↶ 撤销</button>
+  <button class="tool" id="btn-redo" onclick="redo()">↷ 重做</button>
+  <button class="tool primary" onclick="save()">保存模板</button>
+  <button class="tool" onclick="exportPng()">导出 PNG</button>
+</header>
+<main>
+  <div id="canvas"><div id="stage"><div id="board"></div></div></div>
+  <aside id="panel"></aside>
+</main>
+<div id="status"></div>
+
+<script>
+const FACE = { 'Smiley Sans': 'Smiley', 'Noto Serif': 'NotoSerif', 'Noto Sans': 'NotoSans', 'Noto Sans SC': 'NotoSC' };
+let template = null, sample = null, activeId = 'cover', selectedId = null;
+let history = [], index = -1, lastSnapKey = '', lastSnapTime = 0;
+const clone = (o) => JSON.parse(JSON.stringify(o));
+
+const $ = (id) => document.getElementById(id);
+const activeBoard = () => template.artboards.find((a) => a.id === activeId);
+const selectedEl = () => selectedId ? activeBoard().elements.find((e) => e.id === selectedId) : null;
+const substitute = (s) => String(s ?? '').replace(/\{(\w+)\}/g, (m, k) => (sample && sample[k] !== undefined ? sample[k] : m));
+const resolveSrc = (s) => { const v = substitute(s); if (!v) return ''; if (/^data:/.test(v) || /^(https?|file):/.test(v)) return v; return '/files/' + v.replace(/\\/g, '/'); };
+
+/* ---- 撤销 / 重做 ---- */
+function snapshot(key = '', force = false) {
+  const now = Date.now();
+  const merge = !force && key && key === lastSnapKey && now - lastSnapTime < 1000;
+  if (merge && index >= 0) {
+    history[index] = clone(template);            // 同一字段 1 秒内的连续改动合并成一步
+  } else {
+    history = history.slice(0, index + 1);
+    history.push(clone(template));
+    index = history.length - 1;
+  }
+  lastSnapKey = key; lastSnapTime = now;
+  updateButtons();
+}
+function applyState(snap) {
+  template = clone(snap);
+  lastSnapKey = ''; lastSnapTime = 0;
+  buildTabs();
+  render();
+  if (selectedId) {
+    const el = activeBoard().elements.find((e) => e.id === selectedId);
+    if (el) select(el.id); else { selectedId = null; populatePanel(null); }
+  } else {
+    populatePanel(null);
+  }
+  updateButtons();
+}
+function undo() { if (index > 0) { index--; applyState(history[index]); } }
+function redo() { if (index < history.length - 1) { index++; applyState(history[index]); } }
+function updateButtons() {
+  const u = $('btn-undo'), r = $('btn-redo');
+  if (u) { u.disabled = index <= 0; u.style.opacity = index <= 0 ? '.4' : '1'; }
+  if (r) { r.disabled = index >= history.length - 1; r.style.opacity = index >= history.length - 1 ? '.4' : '1'; }
+}
+
+function toast(msg) { const s = $('status'); s.textContent = msg; s.classList.add('show'); setTimeout(() => s.classList.remove('show'), 1800); }
+
+function scale() {
+  const ab = activeBoard();
+  const c = $('canvas');
+  return Math.max(0.05, Math.min((c.clientWidth - 40) / ab.width, (c.clientHeight - 40) / ab.height));
+}
+
+function elementDiv(el) {
+  const d = document.createElement('div');
+  d.className = 'el';
+  d.dataset.id = el.id;
+  const style = d.style;
+  style.left = el.x + 'px'; style.top = el.y + 'px'; style.width = el.w + 'px'; style.height = el.h + 'px';
+  if (el.type === 'image') {
+    style.backgroundImage = `url("${resolveSrc(el.src)}")`;
+    style.backgroundSize = el.fit === 'contain' ? 'contain' : 'cover';
+    style.backgroundPosition = 'center';
+    style.borderRadius = (el.radius || 0) + 'px';
+  } else if (el.type === 'rect') {
+    style.background = el.color || 'transparent';
+    style.borderRadius = (el.radius || 0) + 'px';
+    style.border = el.border || 'none';
+  } else {
+    d.textContent = substitute(el.content);
+    style.fontFamily = `'${FACE[el.font] || 'NotoSC'}', sans-serif`;
+    style.fontSize = (el.size || 28) + 'px';
+    style.color = el.color || '#1F1F1F';
+    style.textAlign = el.align || 'left';
+    style.lineHeight = el.lineHeight || 1.4;
+    style.fontWeight = el.bold ? '600' : '400';
+    style.whiteSpace = 'pre-line';
+    style.overflow = 'hidden';
+  }
+  if (el.id === selectedId) d.classList.add('selected');
+  d.addEventListener('pointerdown', (e) => onPointerDown(e, el));
+  return d;
+}
+
+function render() {
+  const ab = activeBoard();
+  const board = $('board');
+  const s = scale();
+  board.style.width = ab.width + 'px';
+  board.style.height = ab.height + 'px';
+  board.style.background = ab.background || '#fff';
+  board.style.transform = `scale(${s})`;
+  $('stage').style.width = (ab.width * s) + 'px';
+  $('stage').style.height = (ab.height * s) + 'px';
+  board.innerHTML = '';
+  for (const el of ab.elements) board.appendChild(elementDiv(el));
+}
+
+function onPointerDown(e, el) {
+  select(el.id);
+  const startX = e.clientX, startY = e.clientY, elX = el.x, elY = el.y, s = scale();
+  let moved = false;
+  const move = (ev) => {
+    moved = true;
+    el.x = Math.round(elX + (ev.clientX - startX) / s);
+    el.y = Math.round(elY + (ev.clientY - startY) / s);
+    const d = document.querySelector(`[data-id="${CSS.escape(el.id)}"]`);
+    if (d) { d.style.left = el.x + 'px'; d.style.top = el.y + 'px'; }
+    const px = $('p-x'), py = $('p-y');
+    if (px) px.value = el.x;
+    if (py) py.value = el.y;
+  };
+  const up = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    if (moved) snapshot('drag:' + el.id, true);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+  e.preventDefault();
+}
+
+function select(id) {
+  selectedId = id;
+  document.querySelectorAll('#board .el.selected').forEach((d) => d.classList.remove('selected'));
+  const d = document.querySelector(`[data-id="${CSS.escape(id)}"]`);
+  if (d) d.classList.add('selected');
+  populatePanel(selectedEl());
+}
+
+function populatePanel(el) {
+  const p = $('panel');
+  if (!el) { p.innerHTML = '<div class="empty">点画布上的元素编辑</div>'; return; }
+  const isText = el.type === 'text', isImage = el.type === 'image', isRect = el.type === 'rect';
+  const ph = template.placeholders ? Object.keys(template.placeholders) : [];
+  p.innerHTML = `
+    <div class="row"><label>元素类型</label><div style="color:var(--moss)">${el.type} · <code style="font-size:11px">${el.id}</code></div></div>
+    ${isText ? `<div class="row"><label>内容（可含 {占位符}）</label><textarea id="p-content" oninput="commitField('content', this.value)">${escHtml(el.content || '')}</textarea>
+      <div class="ph" style="margin-top:6px"><select id="ph-sel">${ph.map((k) => `<option value="${k}">${k}</option>`).join('')}</select><button onclick="insertPh()">插入</button></div></div>` : ''}
+    ${isImage ? `<div class="row"><label>图片（路径 / {image} / dataURL）</label><input type="text" id="p-src" value="${escHtml(el.src || '')}" oninput="commitField('src', this.value)"></div>` : ''}
+    ${isText ? `<div class="row"><label>字体</label><select id="p-font" onchange="commitField('font', this.value)">${Object.keys(FACE).map((n) => `<option ${n === el.font ? 'selected' : ''}>${n}</option>`).join('')}</select></div>` : ''}
+    ${isText ? `<div class="grid"><div class="row"><label>字号</label><input type="number" id="p-size" value="${el.size}" oninput="commitField('size', +this.value)"></div><div class="row"><label>行高</label><input type="number" step="0.05" id="p-lineHeight" value="${el.lineHeight || 1.4}" oninput="commitField('lineHeight', +this.value)"></div></div>` : ''}
+    ${(isText || isRect) ? `<div class="row"><label>颜色</label><input type="color" id="p-color" value="${el.color || '#1F1F1F'}" oninput="commitField('color', this.value)"></div>` : ''}
+    ${isText ? `<div class="row"><label>对齐</label><select id="p-align" onchange="commitField('align', this.value)">${['left', 'center', 'right'].map((a) => `<option ${a === (el.align || 'left') ? 'selected' : ''}>${a}</option>`).join('')}</select></div>` : ''}
+    ${isText ? `<div class="row inline"><input type="checkbox" id="p-bold" ${el.bold ? 'checked' : ''} onchange="commitField('bold', this.checked)"><label style="margin:0">加粗</label></div>` : ''}
+    ${isImage ? `<div class="row"><label>适配</label><select id="p-fit" onchange="commitField('fit', this.value)">${['cover', 'contain'].map((f) => `<option ${f === el.fit ? 'selected' : ''}>${f}</option>`).join('')}</select></div>` : ''}
+    ${(isImage || isRect) ? `<div class="row"><label>圆角</label><input type="number" id="p-radius" value="${el.radius || 0}" oninput="commitField('radius', +this.value)"></div>` : ''}
+    ${isRect ? `<div class="row"><label>边框（如 1px solid #E6DED2）</label><input type="text" id="p-border" value="${escHtml(el.border || 'none')}" oninput="commitField('border', this.value)"></div>` : ''}
+    <div class="grid">
+      <div class="row"><label>X</label><input type="number" id="p-x" value="${el.x}" oninput="commitField('x', +this.value)"></div>
+      <div class="row"><label>Y</label><input type="number" id="p-y" value="${el.y}" oninput="commitField('y', +this.value)"></div>
+      <div class="row"><label>宽</label><input type="number" id="p-w" value="${el.w}" oninput="commitField('w', +this.value)"></div>
+      <div class="row"><label>高</label><input type="number" id="p-h" value="${el.h}" oninput="commitField('h', +this.value)"></div>
+    </div>
+    <div class="btnrow">
+      <button onclick="reorder(-1)">上移</button>
+      <button onclick="reorder(1)">下移</button>
+      <button class="danger" onclick="del()">删除</button>
+    </div>`;
+}
+
+function escHtml(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+function insertPh() {
+  const sel = $('ph-sel'), ta = $('p-content');
+  if (!sel || !ta) return;
+  const start = ta.selectionStart, end = ta.selectionEnd;
+  ta.value = ta.value.slice(0, start) + sel.value + ta.value.slice(end);
+  ta.focus();
+  commitField('content', ta.value);
+}
+
+function commitField(key, value) {
+  const el = selectedEl();
+  if (!el) return;
+  el[key] = value;
+  snapshot(key + ':' + el.id);
+  // 直接刷新该元素 div，避免整块重渲染丢焦点
+  const d = document.querySelector(`[data-id="${CSS.escape(el.id)}"]`);
+  if (d) {
+    if (el.type === 'text') {
+      if (key === 'content') d.textContent = substitute(el.content);
+      if (['font'].includes(key)) d.style.fontFamily = `'${FACE[el.font] || 'NotoSC'}', sans-serif`;
+      if (['size'].includes(key)) d.style.fontSize = (el.size || 28) + 'px';
+      if (['color'].includes(key)) d.style.color = el.color;
+      if (['align'].includes(key)) d.style.textAlign = el.align;
+      if (['lineHeight'].includes(key)) d.style.lineHeight = el.lineHeight;
+      if (['bold'].includes(key)) d.style.fontWeight = el.bold ? '600' : '400';
+    } else if (el.type === 'image') {
+      if (['src', 'fit'].includes(key)) { d.style.backgroundImage = `url("${resolveSrc(el.src)}")`; d.style.backgroundSize = el.fit === 'contain' ? 'contain' : 'cover'; }
+      if (['radius'].includes(key)) d.style.borderRadius = (el.radius || 0) + 'px';
+    } else if (el.type === 'rect') {
+      if (['color'].includes(key)) d.style.background = el.color;
+      if (['radius'].includes(key)) d.style.borderRadius = (el.radius || 0) + 'px';
+      if (['border'].includes(key)) d.style.border = el.border || 'none';
+    }
+    if (['x'].includes(key)) d.style.left = el.x + 'px';
+    if (['y'].includes(key)) d.style.top = el.y + 'px';
+    if (['w'].includes(key)) d.style.width = el.w + 'px';
+    if (['h'].includes(key)) d.style.height = el.h + 'px';
+  }
+}
+
+function addElement(type) {
+  const ab = activeBoard();
+  const n = ab.elements.length;
+  const el = { id: type + '-' + Date.now().toString(36), type, x: 100, y: 100, w: 400, h: 120, font: 'Smiley Sans', size: 40, color: '#1F1F1F', align: 'left', lineHeight: 1.3, bold: false, content: '新文字', radius: 0, border: 'none', src: '', fit: 'cover' };
+  ab.elements.push(el);
+  snapshot('add:' + el.id, true);
+  render();
+  select(el.id);
+}
+
+function reorder(dir) {
+  const ab = activeBoard();
+  const i = ab.elements.findIndex((e) => e.id === selectedId);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= ab.elements.length) return;
+  [ab.elements[i], ab.elements[j]] = [ab.elements[j], ab.elements[i]];
+  snapshot('reorder:' + selectedId, true);
+  render();
+  select(selectedId);
+}
+
+function del() {
+  const ab = activeBoard();
+  const i = ab.elements.findIndex((e) => e.id === selectedId);
+  if (i < 0) return;
+  const delId = ab.elements[i].id;
+  ab.elements.splice(i, 1);
+  selectedId = null;
+  snapshot('del:' + delId, true);
+  render();
+  populatePanel(null);
+}
+
+function buildTabs() {
+  $('tabs').innerHTML = template.artboards.map((a) => `<button class="${a.id === activeId ? 'active' : ''}" onclick="switchBoard('${a.id}')">${a.name} ${a.width}×${a.height}</button>`).join('');
+}
+
+function switchBoard(id) {
+  activeId = id;
+  selectedId = null;
+  buildTabs();
+  render();
+  populatePanel(null);
+}
+
+async function save() {
+  const r = await fetch('/api/template', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(template) });
+  const j = await r.json();
+  toast(j.ok ? '已保存模板' : '保存失败');
+}
+
+async function exportPng() {
+  toast('正在渲染…');
+  const r = await fetch('/api/render', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ template, content: sample }) });
+  const j = await r.json();
+  if (!j.ok) { toast('渲染失败：' + (j.error || '')); return; }
+  toast('已导出，新窗口查看');
+  for (const f of j.files) window.open(f.url + '?t=' + Date.now(), '_blank');
+}
+
+(async function init() {
+  const [t, s] = await Promise.all([fetch('/api/template').then((r) => r.json()), fetch('/api/sample').then((r) => r.json())]);
+  template = t; sample = s;
+  activeId = template.artboards[0].id;
+  history = [clone(template)]; index = 0; updateButtons();
+  buildTabs();
+  render();
+  populatePanel(null);
+  window.addEventListener('resize', render);
+})();
+
+window.addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  const tag = (document.activeElement && document.activeElement.tagName) || '';
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return; // 文本框内保留原生撤销
+  const k = e.key.toLowerCase();
+  if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+  else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); redo(); }
+});
+</script>
+</body>
+</html>

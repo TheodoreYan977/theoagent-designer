@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1242" height="900" viewBox="0 0 1242 900">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#465C47"/>
+      <stop offset="1" stop-color="#8fb79a"/>
+    </linearGradient>
+  </defs>
+  <rect width="1242" height="900" fill="url(#g)"/>
+  <circle cx="621" cy="360" r="150" fill="#FBF7F0" opacity="0.12"/>
+  <circle cx="621" cy="360" r="210" fill="none" stroke="#FBF7F0" stroke-opacity="0.25" stroke-width="3"/>
+  <text x="621" y="420" font-family="Georgia, serif" font-size="64" fill="#FBF7F0" text-anchor="middle" font-weight="bold">Sample Cover</text>
+  <text x="621" y="480" font-family="Georgia, serif" font-size="28" fill="#FBF7F0" text-anchor="middle" opacity="0.85">TheoAgent Designer</text>
+</svg>

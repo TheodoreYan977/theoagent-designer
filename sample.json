@@ -1,0 +1,20 @@
+{
+  "source": "TheoAgent Sample",
+  "issue": "1",
+  "date_en": "1 December 2026",
+  "title_en": "A robot cat learns to open doors",
+  "title_zh": "机器猫学会开门了",
+  "image": "images/sample-cover.svg",
+  "cover_bullets": "· 一只四足机器人学会了用爪子拉门把手\n· 训练先在仿真里做，再搬到真实环境\n· 4 个核心词 + 一句一个知识点",
+  "header": "精读 01/03",
+  "en": "Engineers have taught a four-legged robot to open doors by pulling the handle with one paw. The robot practised hundreds of times in a simulation before trying the real thing.",
+  "zh": "工程师教会了一只四足机器人用一只爪子拉门把手来开门。它在仿真里练了几百次，才到真实环境里尝试。",
+  "note": "语言点 have taught：现在完成时，强调“已经教会”的结果，而不是谁在教。\n\n写作背景：这种“仿真到现实（sim-to-real）”的训练方式，是机器人学习精细动作的热门方向。\n\n文章目的：用一个具体的小成果，说明机器人如何通过反复练习掌握精细动作。",
+  "word": "handle",
+  "ipa": "/ˈhændl/",
+  "pos": "n.",
+  "meaning": "门把手；手柄",
+  "example_en": "The robot pulls the handle with one paw.",
+  "example_zh": "机器人用一只爪子拉门把手。",
+  "tip": "handle 作名词是“把手”，作动词是“处理、应对”。"
+}
