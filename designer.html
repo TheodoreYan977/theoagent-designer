@@ -26,7 +26,7 @@
   button.tool:hover{border-color:var(--moss);}
   button.tool.primary{background:var(--moss);border-color:var(--moss);color:#12231a;font-weight:600;}
   main{flex:1;display:flex;min-height:0;}
-  #canvas{flex:1;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:24px;}
+  #canvas{flex:1;overflow:hidden;display:flex;align-items:flex-start;justify-content:center;padding:24px;}
   #stage{position:relative;box-shadow:0 8px 40px rgba(0,0,0,.5);flex:0 0 auto;}
   #board{position:absolute;left:0;top:0;transform-origin:0 0;}
   #board .el{position:absolute;cursor:move;}
@@ -63,10 +63,10 @@
   #crop-bar button.primary{background:var(--moss);border-color:var(--moss);color:#12231a;font-weight:600;}
   #page-modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:120;}
   #page-modal.show{display:flex;}
-  .pm-box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;width:320px;display:flex;flex-direction:column;gap:12px;color:var(--ink);}
+  .pm-box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;width:400px;display:flex;flex-direction:column;gap:12px;color:var(--ink);}
   .pm-box h3{font-size:16px;margin:0;color:var(--accent);}
   .pm-box label{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:4px;}
-  .pm-box input,.pm-box select{background:#1c1c1c;border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:6px 8px;font-size:13px;height:32px;}
+  .pm-box input,.pm-box select{width:100%;background:#1c1c1c;border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:6px 8px;font-size:13px;height:32px;box-sizing:border-box;}
   .pm-size{display:flex;gap:8px;}
   .pm-size label{flex:1;}
   .pm-actions{display:flex;gap:8px;justify-content:flex-end;}
@@ -78,6 +78,7 @@
 <header>
   <span class="brand">TheoAgent 图文设计器</span>
   <div class="tabs" id="tabs"></div>
+  <span id="zoom-info" title="Ctrl+滚轮缩放，拖空白处平移，双击复位" style="font-size:12px;color:var(--muted);min-width:44px;text-align:center">100%</span>
   <div class="spacer"></div>
   <button class="tool" onclick="addElement('text')">＋文字</button>
   <button class="tool" onclick="addElement('image')">＋图片</button>
@@ -112,6 +113,7 @@
 const FACE = { 'Smiley Sans': 'Smiley', 'Noto Serif': 'NotoSerif', 'Noto Sans': 'NotoSans', 'Noto Sans SC': 'NotoSC' };
 let template = null, sample = null, activeId = 'cover', selectedId = null;
 let history = [], index = -1, lastSnapKey = '', lastSnapTime = 0;
+let viewZoom = 1, panX = 0, panY = 0;
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
 const $ = (id) => document.getElementById(id);
@@ -167,7 +169,7 @@ const netMsg = (err) => {
 function scale() {
   const ab = activeBoard();
   const c = $('canvas');
-  return Math.max(0.05, Math.min((c.clientWidth - 40) / ab.width, (c.clientHeight - 40) / ab.height));
+  return Math.max(0.05, Math.min((c.clientWidth - 40) / ab.width, (c.clientHeight - 40) / ab.height)) * viewZoom;
 }
 
 function elementDiv(el) {
@@ -211,6 +213,8 @@ function render() {
   board.style.transform = `scale(${s})`;
   $('stage').style.width = (ab.width * s) + 'px';
   $('stage').style.height = (ab.height * s) + 'px';
+  applyPan();
+  const zi = $('zoom-info'); if (zi) zi.textContent = Math.round(viewZoom * 100) + '%';
   board.innerHTML = '';
   for (const el of ab.elements) board.appendChild(elementDiv(el));
 }
@@ -671,6 +675,26 @@ canvasEl.addEventListener('drop', async (e) => {
     select(el.id);
     toast('已添加图片');
   } catch (err) { toast(netMsg(err)); }
+});
+
+// 缩放 / 平移 / 复位
+function applyPan() { const st = $('stage'); if (st) st.style.transform = `translate(${panX}px,${panY}px)`; }
+$('canvas').addEventListener('wheel', (e) => {
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+  viewZoom = Math.max(0.2, Math.min(4, viewZoom * (e.deltaY < 0 ? 1.1 : 0.9)));
+  render();
+}, { passive: false });
+$('canvas').addEventListener('dblclick', (e) => {
+  if (e.target.closest('.el')) return;
+  viewZoom = 1; panX = 0; panY = 0; render(); toast('已复位视图');
+});
+$('canvas').addEventListener('pointerdown', (e) => {
+  if (e.target.closest('.el')) return;
+  const sx = e.clientX, sy = e.clientY, ox = panX, oy = panY;
+  const move = (ev) => { panX = ox + (ev.clientX - sx); panY = oy + (ev.clientY - sy); applyPan(); };
+  const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
 });
 </script>
 </body>
