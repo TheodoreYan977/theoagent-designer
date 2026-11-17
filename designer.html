@@ -32,7 +32,18 @@
   #board .el{position:absolute;cursor:move;}
   #board .el.selected{outline:2px solid var(--accent);outline-offset:1px;}
   #board .el:hover{outline:1px dashed var(--moss);}
-  #panel{width:300px;flex:0 0 300px;border-left:1px solid var(--line);background:var(--panel);overflow-y:auto;padding:14px;}
+  #panel{width:300px;flex:0 0 300px;display:flex;flex-direction:column;border-left:1px solid var(--line);background:var(--panel);overflow:hidden;}
+  #layers{flex:0 0 auto;max-height:42%;overflow-y:auto;padding:10px;border-bottom:1px solid var(--line);}
+  #layers .ltitle{font-size:11px;color:var(--muted);letter-spacing:.08em;margin-bottom:6px;}
+  .layer{display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:6px;font-size:12px;color:var(--ink);cursor:pointer;user-select:none;}
+  .layer:hover{background:#333;}
+  .layer.sel{background:#3a3a3a;}
+  .layer .ico{width:16px;text-align:center;flex:0 0 16px;opacity:.8;}
+  .layer .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .layer .op{flex:0 0 auto;opacity:.6;cursor:pointer;font-size:12px;padding:0 2px;}
+  .layer .op:hover{opacity:1;}
+  .layer.hidden{opacity:.45;}
+  #props{flex:1;overflow-y:auto;padding:14px;}
   #panel .empty{color:var(--muted);padding:20px 0;text-align:center;}
   #panel .row{margin-bottom:10px;}
   #panel label{display:block;font-size:12px;color:var(--muted);margin-bottom:3px;}
@@ -90,7 +101,7 @@
 </header>
 <main>
   <div id="canvas"><div id="stage"><div id="board"></div></div></div>
-  <aside id="panel"></aside>
+  <aside id="panel"><div id="layers"></div><div id="props"></div></aside>
 </main>
 <div id="status"></div>
 
@@ -178,6 +189,7 @@ function elementDiv(el) {
   d.dataset.id = el.id;
   const style = d.style;
   style.left = el.x + 'px'; style.top = el.y + 'px'; style.width = el.w + 'px'; style.height = el.h + 'px';
+  if (el.visible === false) style.display = 'none';
   if (el.type === 'image') {
     style.backgroundImage = `url("${resolveSrc(el.src)}")`;
     style.backgroundSize = el.fit === 'contain' ? 'contain' : 'cover';
@@ -217,10 +229,45 @@ function render() {
   const zi = $('zoom-info'); if (zi) zi.textContent = Math.round(viewZoom * 100) + '%';
   board.innerHTML = '';
   for (const el of ab.elements) board.appendChild(elementDiv(el));
+  renderLayers();
+}
+
+function elName(el) { return el.name || (el.type === 'text' ? '文字' : el.type === 'image' ? '图片' : '色块'); }
+function renderLayers() {
+  const box = $('layers'); if (!box) return;
+  const ab = activeBoard();
+  const rows = ab.elements.slice().reverse().map((el) =>
+    `<div class="layer ${el.id === selectedId ? 'sel' : ''} ${el.visible === false ? 'hidden' : ''}" onclick="select('${el.id}')" ondblclick="renameLayer('${el.id}')" draggable="true" ondragstart="layerDragStart(event,'${el.id}')" ondrop="layerDrop(event,'${el.id}')" ondragover="event.preventDefault()" title="双击重命名">
+      <span class="ico">${el.type === 'text' ? 'T' : el.type === 'image' ? '▣' : '■'}</span>
+      <span class="nm">${escHtml(elName(el))}</span>
+      <span class="op" title="显示/隐藏" onclick="event.stopPropagation();toggleVisible('${el.id}')">${el.visible === false ? '🚫' : '👁'}</span>
+      <span class="op" title="锁定/解锁" onclick="event.stopPropagation();toggleLock('${el.id}')">${el.locked ? '🔒' : '🔓'}</span>
+    </div>`
+  ).join('');
+  box.innerHTML = `<div class="ltitle">图层（上为顶层）</div>` + (rows || '<div class="empty" style="padding:10px 0">暂无元素</div>');
+}
+function renameLayer(id) { const ab = activeBoard(); const el = ab.elements.find((e) => e.id === id); if (!el) return; const v = prompt('图层名称', elName(el)); if (v === null) return; el.name = v.trim() || elName(el); snapshot('layer:rename:' + id, true); render(); }
+function toggleVisible(id) { const ab = activeBoard(); const el = ab.elements.find((e) => e.id === id); if (!el) return; el.visible = el.visible === false ? true : false; snapshot('layer:visible:' + id, true); render(); }
+function toggleLock(id) { const ab = activeBoard(); const el = ab.elements.find((e) => e.id === id); if (!el) return; el.locked = !el.locked; if (el.locked && selectedId === id) selectedId = null; snapshot('layer:lock:' + id, true); render(); populatePanel(null); }
+let dragLayerId = null;
+function layerDragStart(e, id) { dragLayerId = id; try { e.dataTransfer.effectAllowed = 'move'; } catch (x) {} }
+function layerDrop(e, targetId) {
+  e.preventDefault();
+  if (!dragLayerId || dragLayerId === targetId) return;
+  const ab = activeBoard();
+  const from = ab.elements.findIndex((x) => x.id === dragLayerId);
+  const to = ab.elements.findIndex((x) => x.id === targetId);
+  if (from < 0 || to < 0) return;
+  const [item] = ab.elements.splice(from, 1);
+  ab.elements.splice(to, 0, item);
+  snapshot('layer:reorder:' + dragLayerId, true);
+  dragLayerId = null;
+  render();
 }
 
 function onPointerDown(e, el) {
   select(el.id);
+  if (el.locked) return;
   const startX = e.clientX, startY = e.clientY, elX = el.x, elY = el.y, s = scale();
   let moved = false;
   const move = (ev) => {
@@ -249,10 +296,11 @@ function select(id) {
   const d = document.querySelector(`[data-id="${CSS.escape(id)}"]`);
   if (d) d.classList.add('selected');
   populatePanel(selectedEl());
+  renderLayers();
 }
 
 function populatePanel(el) {
-  const p = $('panel');
+  const p = $('props');
   if (!el) { p.innerHTML = '<div class="empty">点画布上的元素编辑</div>'; return; }
   const isText = el.type === 'text', isImage = el.type === 'image', isRect = el.type === 'rect';
   const ph = template.placeholders ? Object.keys(template.placeholders) : [];

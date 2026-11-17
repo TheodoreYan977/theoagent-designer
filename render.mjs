@@ -83,7 +83,7 @@ function elementHtml(el, content) {
 }
 
 function buildHtml(ab, content, faceCss) {
-  const els = ab.elements.map((el) => elementHtml(el, content)).join('\n');
+  const els = ab.elements.filter((el) => el.visible !== false).map((el) => elementHtml(el, content)).join('\n');
   return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><style>
 ${faceCss}
 *{box-sizing:border-box;margin:0;padding:0;}
