@@ -43,7 +43,10 @@ export function startServer(port = PORT) {
         fs.writeFileSync(TPL, JSON.stringify(JSON.parse(await readBody(req)), null, 2) + '\n', 'utf8');
         return json(res, 200, { ok: true });
       }
-      if (url.pathname === '/api/sample') return json(res, 200, readJson(SAMPLE));
+      if (url.pathname === '/api/sample') {
+        if (req.method === 'POST') { fs.writeFileSync(SAMPLE, JSON.stringify(JSON.parse(await readBody(req)), null, 2) + '\n', 'utf8'); return json(res, 200, { ok: true }); }
+        return json(res, 200, readJson(SAMPLE));
+      }
       if (url.pathname === '/api/fonts') return json(res, 200, FONTS);
       if (url.pathname.startsWith('/fonts/')) {
         const name = decodeURIComponent(url.pathname.slice('/fonts/'.length));
