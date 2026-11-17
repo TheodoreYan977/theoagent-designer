@@ -11,8 +11,10 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 const TPL = path.join(ROOT, 'template.json');
 const SAMPLE = path.join(ROOT, 'sample.json');
 const OUTPUT = path.join(ROOT, 'output');
+const TPLDIR = path.join(ROOT, 'templates');
 const PORT = Number(process.argv[2] || 8090);
 const HOST = '127.0.0.1';
+const sanitizeTplName = (n) => String(n || '').replace(/[^\w\u4e00-\u9fa5.\-]+/g, '_').slice(0, 60);
 
 const FONTS = { 'Smiley Sans': 'SmileySans.ttf', 'Noto Serif': 'NotoSerif-VF.ttf', 'Noto Sans': 'NotoSans-VF.ttf', 'Noto Sans SC': 'NotoSansSC-VF.ttf' };
 
@@ -78,6 +80,30 @@ export function startServer(port = PORT) {
         const { template, content } = JSON.parse(await readBody(req));
         const results = await renderArtboards(template, content, { outDir: OUTPUT });
         return json(res, 200, { ok: true, files: results.map((r) => ({ id: r.id, url: `/preview/${r.id}.png`, width: r.width, height: r.height })) });
+      }
+      if (url.pathname === '/api/templates' && req.method === 'GET') {
+        const list = fs.existsSync(TPLDIR) ? fs.readdirSync(TPLDIR).filter((f) => f.endsWith('.json')).map((f) => ({ name: f.replace(/\.json$/, ''), modified: fs.statSync(path.join(TPLDIR, f)).mtimeMs })) : [];
+        return json(res, 200, { ok: true, list });
+      }
+      if (url.pathname === '/api/templates' && req.method === 'POST') {
+        const name = sanitizeTplName(url.searchParams.get('name'));
+        if (!name) return json(res, 400, { ok: false, error: 'bad name' });
+        const body = JSON.parse(await readBody(req));
+        fs.mkdirSync(TPLDIR, { recursive: true });
+        fs.writeFileSync(path.join(TPLDIR, name + '.json'), JSON.stringify(body, null, 2) + '\n', 'utf8');
+        return json(res, 200, { ok: true, name });
+      }
+      if (url.pathname === '/api/templates/load' && req.method === 'GET') {
+        const name = sanitizeTplName(url.searchParams.get('name'));
+        const f = name ? path.join(TPLDIR, name + '.json') : '';
+        if (!f || !fs.existsSync(f)) return json(res, 404, { ok: false, error: 'not found' });
+        return json(res, 200, JSON.parse(fs.readFileSync(f, 'utf8')));
+      }
+      if (url.pathname === '/api/templates' && req.method === 'DELETE') {
+        const name = sanitizeTplName(url.searchParams.get('name'));
+        const f = name ? path.join(TPLDIR, name + '.json') : '';
+        if (f && fs.existsSync(f)) fs.unlinkSync(f);
+        return json(res, 200, { ok: true });
       }
       if (url.pathname.startsWith('/preview/')) {
         const name = decodeURIComponent(url.pathname.slice('/preview/'.length));

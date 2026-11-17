@@ -97,6 +97,14 @@
   #crop-bar button.primary{background:var(--moss);border-color:var(--moss);color:#12231a;font-weight:600;}
   #page-modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:120;}
   #page-modal.show{display:flex;}
+  #tpl-modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:130;}
+  #tpl-modal.show{display:flex;}
+  #tpl-modal label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px;}
+  #tpl-list .tplrow{display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px;}
+  #tpl-list .tplrow .nm{flex:1;cursor:pointer;color:var(--ink);}
+  #tpl-list .tplrow .nm:hover{color:var(--moss);}
+  .mini2{border:1px solid var(--line);background:#1c1c1c;color:var(--ink);border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer;}
+  .mini2:hover{border-color:var(--moss);}
   .pm-box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;width:400px;display:flex;flex-direction:column;gap:12px;color:var(--ink);}
   .pm-box h3{font-size:16px;margin:0;color:var(--accent);}
   .pm-box label{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:4px;}
@@ -119,6 +127,7 @@
   <button class="tool" onclick="addElement('rect')">＋色块</button>
   <button class="tool" id="btn-undo" onclick="undo()">↶ 撤销</button>
   <button class="tool" id="btn-redo" onclick="redo()">↷ 重做</button>
+  <button class="tool" onclick="openTplLib()">模板库</button>
   <button class="tool primary" onclick="save()">保存模板</button>
   <button class="tool" onclick="exportPng()">导出 PNG</button>
 </header>
@@ -145,6 +154,17 @@
     <label>类型<select id="pm-kind" onchange="pmKindChange()"><option value="cover">封面 1242×1660</option><option value="note">图文笔记 1080×1440</option><option value="custom">自定义</option></select></label>
     <div class="pm-size"><label>宽<input id="pm-w" type="number" value="1242"></label><label>高<input id="pm-h" type="number" value="1660"></label></div>
     <div class="pm-actions"><button onclick="closeNewPage()">取消</button><button class="primary" onclick="createPage()">创建</button></div>
+  </div>
+</div>
+
+<div id="tpl-modal">
+  <div class="pm-box">
+    <h3>模板库</h3>
+    <label>存为模板（当前设计）</label>
+    <div style="display:flex;gap:6px"><input id="tpl-name" type="text" placeholder="模板名称" value="我的模板" style="flex:1;width:auto"><button class="mini2" onclick="saveAsTemplate()">保存</button></div>
+    <label>已存模板（点名称打开）</label>
+    <div id="tpl-list" style="max-height:320px;overflow-y:auto"></div>
+    <div class="pm-actions"><button onclick="closeTplLib()">关闭</button></div>
   </div>
 </div>
 
@@ -920,6 +940,52 @@ function switchBoard(id) {
   buildTabs();
   render();
   populatePanel(null);
+}
+
+async function openTplLib() { $('tpl-modal').classList.add('show'); await refreshTplList(); }
+function closeTplLib() { $('tpl-modal').classList.remove('show'); }
+async function refreshTplList() {
+  try {
+    const r = await fetch('/api/templates');
+    const j = await r.json();
+    const list = (j.list || []).sort((a, b) => b.modified - a.modified);
+    $('tpl-list').innerHTML = list.length ? list.map((t) => `<div class="tplrow"><span class="nm" onclick="loadTemplate('${t.name}')">${escHtml(t.name)}</span><button class="mini2" onclick="deleteTemplate('${t.name}')">删除</button></div>`).join('') : '<div style="color:var(--muted);padding:10px 0">还没有模板</div>';
+  } catch (e) { toast('读取模板失败：连不上服务'); }
+}
+async function saveAsTemplate() {
+  const name = ($('tpl-name').value || '').trim();
+  if (!name) { toast('请输入模板名'); return; }
+  try {
+    const r = await fetch('/api/templates?name=' + encodeURIComponent(name), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(template) });
+    const j = await r.json();
+    if (!j.ok) { toast('保存失败'); return; }
+    toast('已存为模板：' + name);
+    await refreshTplList();
+  } catch (e) { toast('保存失败：连不上服务'); }
+}
+async function loadTemplate(name) {
+  if (!confirm('打开模板「' + name + '」会替换当前设计，继续？')) return;
+  try {
+    const r = await fetch('/api/templates/load?name=' + encodeURIComponent(name));
+    if (!r.ok) { toast('模板不存在'); return; }
+    const t = await r.json();
+    if (t.artboards && !t.pages) t.pages = t.artboards;
+    template = t;
+    activeId = template.pages[0].id;
+    clearSel();
+    history = [clone(template)]; index = 0; updateButtons();
+    buildTabs(); render(); populatePanel(null); renderContentPanel();
+    closeTplLib();
+    toast('已打开模板：' + name);
+  } catch (e) { toast('打开失败：连不上服务'); }
+}
+async function deleteTemplate(name) {
+  if (!confirm('删除模板「' + name + '」？')) return;
+  try {
+    await fetch('/api/templates?name=' + encodeURIComponent(name), { method: 'DELETE' });
+    await refreshTplList();
+    toast('已删除模板');
+  } catch (e) { toast('删除失败'); }
 }
 
 async function save() {
