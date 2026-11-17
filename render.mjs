@@ -67,19 +67,48 @@ function substitute(s, content) {
   return String(s ?? '').replace(/\{(\w+)\}/g, (m, k) => (content[k] !== undefined ? content[k] : m));
 }
 
+function filterCss(f) {
+  if (!f) return '';
+  const p = [];
+  if (f.brightness != null && f.brightness !== 100) p.push('brightness(' + f.brightness + '%)');
+  if (f.contrast != null && f.contrast !== 100) p.push('contrast(' + f.contrast + '%)');
+  if (f.saturate != null && f.saturate !== 100) p.push('saturate(' + f.saturate + '%)');
+  if (f.blur) p.push('blur(' + f.blur + 'px)');
+  if (f.grayscale) p.push('grayscale(' + f.grayscale + '%)');
+  return p.join(' ');
+}
+function clipCss(c) { if (c === 'circle') return 'circle(50% at 50% 50%)'; if (c === 'ellipse') return 'ellipse(50% 50% at 50% 50%)'; return ''; }
+function gradientCss(g) { return 'linear-gradient(' + (g.angle || 180) + 'deg, ' + g.stops.map((s) => (s.color || '#000') + ' ' + (s.pos || 0) + '%').join(', ') + ')'; }
+function visualStyle(el) {
+  let s = `opacity:${el.opacity == null ? 1 : el.opacity / 100};`;
+  if (el.shadow) s += `box-shadow:${el.shadow.x || 0}px ${el.shadow.y || 0}px ${el.shadow.blur || 0}px ${el.shadow.color || '#00000055'};`;
+  return s;
+}
+function borderCss(el, fallback) {
+  if (el.stroke && el.stroke.width) return `border:${el.stroke.width}px solid ${el.stroke.color || '#000'};`;
+  return fallback || '';
+}
+
 function elementHtml(el, content) {
   const px = (v) => `${v}px`;
-  const pos = `position:absolute;left:${px(el.x)};top:${px(el.y)};transform:rotate(${el.rotate || 0}deg);`;
+  const pos = `position:absolute;left:${px(el.x)};top:${px(el.y)};transform:rotate(${el.rotate || 0}deg);${visualStyle(el)}`;
   if (el.type === 'image') {
     const src = resolveFile(substitute(el.src, content));
-    return `<img id="${esc(el.id)}" style="${pos}width:${px(el.w)};height:${px(el.h)};object-fit:${el.fit || 'cover'};border-radius:${px(el.radius || 0)};display:block;" src="${esc(src)}" alt="">`;
+    let extra = `width:${px(el.w)};height:${px(el.h)};object-fit:${el.fit || 'cover'};border-radius:${px(el.radius || 0)};display:block;`;
+    const f = filterCss(el.filter); if (f) extra += `filter:${f};`;
+    const cp = clipCss(el.clip); if (cp) extra += `clip-path:${cp};`;
+    extra += borderCss(el, '');
+    return `<img id="${esc(el.id)}" style="${pos}${extra}" src="${esc(src)}" alt="">`;
   }
   if (el.type === 'rect') {
-    return `<div id="${esc(el.id)}" style="${pos}width:${px(el.w)};height:${px(el.h)};background:${el.color || 'transparent'};border-radius:${px(el.radius || 0)};border:${el.border || 'none'};"></div>`;
+    const bg = (el.fill && el.fill.stops) ? gradientCss(el.fill) : (el.color || 'transparent');
+    return `<div id="${esc(el.id)}" style="${pos}width:${px(el.w)};height:${px(el.h)};background:${bg};border-radius:${px(el.radius || 0)};${borderCss(el, `border:${el.border || 'none'}`)}"></div>`;
   }
   const text = esc(substitute(el.content, content));
   const fam = FACE[el.font] ? FACE[el.font][0] : 'NotoSC';
-  return `<div id="${esc(el.id)}" style="${pos}width:${px(el.w)};height:${px(el.h)};font-family:'${fam}',sans-serif;font-size:${px(el.size || 28)};color:${el.color || '#1F1F1F'};text-align:${el.align || 'left'};line-height:${el.lineHeight || 1.4};font-weight:${el.bold ? '600' : '400'};white-space:pre-line;overflow:hidden;">${text}</div>`;
+  let ts = `letter-spacing:${px(el.letterSpacing || 0)};`;
+  if (el.vertical) ts += 'writing-mode:vertical-rl;';
+  return `<div id="${esc(el.id)}" style="${pos}width:${px(el.w)};height:${px(el.h)};font-family:'${fam}',sans-serif;font-size:${px(el.size || 28)};color:${el.color || '#1F1F1F'};text-align:${el.align || 'left'};line-height:${el.lineHeight || 1.4};font-weight:${el.bold ? '600' : '400'};white-space:pre-line;overflow:hidden;${ts}${borderCss(el, '')}">${text}</div>`;
 }
 
 function buildHtml(ab, content, faceCss) {

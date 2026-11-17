@@ -76,6 +76,12 @@
   #panel .btnrow button.danger{color:#ff9b9b;border-color:#5a3232;}
   #panel .ph{display:flex;gap:6px;}
   #panel .ph select{flex:1;}
+  #panel .frow{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px;}
+  #panel .frow span{flex:0 0 32px;color:var(--muted);}
+  #panel .frow input{flex:1;height:auto;min-width:0;}
+  #panel .mini2{border:1px solid var(--line);background:#1c1c1c;color:var(--ink);border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;}
+  #panel .mini2:hover{border-color:var(--moss);}
+  #panel .sw{width:20px;height:20px;border-radius:4px;border:1px solid var(--line);cursor:pointer;display:inline-block;}
   #status{position:fixed;right:16px;bottom:16px;background:var(--moss);color:#12231a;padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;}
   #status.show{opacity:1;}
   #crop-modal{position:fixed;inset:0;background:rgba(0,0,0,.82);display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:100;}
@@ -218,13 +224,18 @@ function elementDiv(el) {
   style.left = el.x + 'px'; style.top = el.y + 'px'; style.width = el.w + 'px'; style.height = el.h + 'px';
   if (el.visible === false) style.display = 'none';
   style.transform = `rotate(${el.rotate || 0}deg)`;
+  style.opacity = el.opacity == null ? '1' : String(el.opacity / 100);
+  if (el.shadow) style.boxShadow = shadowCss(el.shadow);
+  if (el.stroke && el.stroke.width) style.border = strokeCss(el);
   if (el.type === 'image') {
     style.backgroundImage = `url("${resolveSrc(el.src)}")`;
     style.backgroundSize = el.fit === 'contain' ? 'contain' : 'cover';
     style.backgroundPosition = 'center';
     style.borderRadius = (el.radius || 0) + 'px';
+    const f = filterCss(el.filter); if (f) style.filter = f;
+    const cp = clipCss(el.clip); if (cp) style.clipPath = cp;
   } else if (el.type === 'rect') {
-    style.background = el.color || 'transparent';
+    style.background = (el.fill && el.fill.stops) ? gradientCss(el.fill) : (el.color || 'transparent');
     style.borderRadius = (el.radius || 0) + 'px';
     style.border = el.border || 'none';
   } else {
@@ -237,12 +248,28 @@ function elementDiv(el) {
     style.fontWeight = el.bold ? '600' : '400';
     style.whiteSpace = 'pre-line';
     style.overflow = 'hidden';
+    style.letterSpacing = (el.letterSpacing || 0) + 'px';
+    if (el.vertical) style.writingMode = 'vertical-rl';
   }
   if (selectedIds.includes(el.id)) d.classList.add('selected');
   if (el.locked) d.style.pointerEvents = 'none';
   d.addEventListener('pointerdown', (e) => onPointerDown(e, el));
   return d;
 }
+function filterCss(f) {
+  if (!f) return '';
+  const p = [];
+  if (f.brightness != null && f.brightness !== 100) p.push('brightness(' + f.brightness + '%)');
+  if (f.contrast != null && f.contrast !== 100) p.push('contrast(' + f.contrast + '%)');
+  if (f.saturate != null && f.saturate !== 100) p.push('saturate(' + f.saturate + '%)');
+  if (f.blur) p.push('blur(' + f.blur + 'px)');
+  if (f.grayscale) p.push('grayscale(' + f.grayscale + '%)');
+  return p.join(' ');
+}
+function shadowCss(s) { return (s.x || 0) + 'px ' + (s.y || 0) + 'px ' + (s.blur || 0) + 'px ' + (s.color || '#00000055'); }
+function strokeCss(el) { return (el.stroke.width) + 'px solid ' + (el.stroke.color || '#000'); }
+function clipCss(c) { if (c === 'circle') return 'circle(50% at 50% 50%)'; if (c === 'ellipse') return 'ellipse(50% 50% at 50% 50%)'; return ''; }
+function gradientCss(g) { return 'linear-gradient(' + (g.angle || 180) + 'deg, ' + g.stops.map((s) => (s.color || '#000') + ' ' + (s.pos || 0) + '%').join(', ') + ')'; }
 
 function render() {
   const ab = activeBoard();
@@ -476,6 +503,46 @@ function toggleSelect(id) {
   renderSelection();
 }
 
+function commitVisual(key, value) {
+  const el = selectedEl(); if (!el) return;
+  el[key] = value;
+  snapshot(key + ':' + el.id);
+  render();
+}
+function setF(k, v) { const el = selectedEl(); if (!el) return; const f = Object.assign({}, el.filter || {}); f[k] = v; return f; }
+function setShadow(k, v) { const el = selectedEl(); if (!el) return; const s = Object.assign({ x: 0, y: 8, blur: 24, color: '#00000033' }, el.shadow || {}); s[k] = v; return s; }
+function setStroke(k, v) { const el = selectedEl(); if (!el) return; const s = Object.assign({ width: 2, color: '#000000' }, el.stroke || {}); s[k] = v; return s; }
+function setGrad(idx, color) { const el = selectedEl(); if (!el) return; const g = Object.assign({ type: 'linear', angle: 180, stops: [{ pos: 0, color: '#FACBC6' }, { pos: 100, color: '#465C47' }] }, el.fill || {}); g.stops = g.stops.slice(); g.stops[idx] = { pos: idx === 0 ? 0 : 100, color }; return g; }
+function setGradAngle(a) { const el = selectedEl(); if (!el) return; const g = Object.assign({ type: 'linear', angle: 180, stops: [{ pos: 0, color: '#FACBC6' }, { pos: 100, color: '#465C47' }] }, el.fill || {}); g.angle = a; return g; }
+function toggleGradient(on) { const el = selectedEl(); if (!el) return; if (on) commitVisual('fill', { type: 'linear', angle: 180, stops: [{ pos: 0, color: '#FACBC6' }, { pos: 100, color: '#465C47' }] }); else { el.fill = null; snapshot('fill:' + el.id); render(); populatePanel(el); } }
+function applyTextStyle(name) {
+  const el = selectedEl(); if (!el || el.type !== 'text') return;
+  const p = { '标题': { font: 'Smiley Sans', size: 64, bold: true, letterSpacing: 0 }, '正文': { font: 'Noto Serif', size: 32, bold: false, letterSpacing: 0 }, '标签': { font: 'Smiley Sans', size: 28, bold: false, letterSpacing: 2 } }[name];
+  if (!p) return;
+  Object.assign(el, p);
+  snapshot('textstyle:' + name, true);
+  render(); populatePanel(el);
+}
+async function pickColor() {
+  if (!window.EyeDropper) { toast('当前浏览器不支持吸管（需 Chrome/Edge）'); return; }
+  try { const r = await new EyeDropper().open(); applyColor(r.sRGBHex); } catch (e) {}
+}
+function applyColor(c) {
+  const el = selectedEl(); if (!el) return;
+  if (el.type === 'text') el.color = c; else if (el.type === 'rect' && !(el.fill && el.fill.stops)) el.color = c;
+  snapshot('color:' + c, true);
+  render(); populatePanel(el);
+  toast('已取色 ' + c);
+}
+function addBrandColor() {
+  const el = selectedEl(); if (!el) return;
+  const c = el.type === 'text' ? el.color : (el.type === 'rect' ? el.color : null);
+  if (!c) { toast('先选一个文字或色块'); return; }
+  template.brandColors = template.brandColors || [];
+  if (!template.brandColors.includes(c)) { template.brandColors.push(c); snapshot('brand+', true); render(); populatePanel(el); toast('已加入品牌色'); }
+  else toast('已在品牌色里');
+}
+
 function populatePanel(el) {
   const p = $('props');
   if (!el) { p.innerHTML = '<div class="empty">点画布上的元素编辑</div>'; return; }
@@ -511,6 +578,23 @@ function populatePanel(el) {
     ${isImage ? `<div class="row inline" style="margin-top:8px"><input type="checkbox" id="p-natural" ${el.naturalSize ? 'checked' : ''} onchange="toggleNatural(this.checked)"><label style="margin:0">上传时用图片原始尺寸</label></div>` : ''}
     ${isImage ? `<div class="row" style="margin-top:8px"><button type="button" style="width:100%;padding:9px 8px;border:1px solid var(--line);border-radius:6px;background:#1c1c1c;color:var(--ink);cursor:pointer;font-size:13px" onclick="openCrop()">✂️ 截图裁剪（框选保留一部分）</button></div>` : ''}
     ${isImage && el.preCropSrc ? `<div class="row"><button type="button" style="width:100%;padding:7px 8px;border:1px dashed var(--line);border-radius:6px;background:#1c1c1c;color:var(--muted);cursor:pointer;font-size:12px" onclick="restoreOriginal()">↺ 恢复裁剪前的原图</button></div>` : ''}
+    <div style="border-top:1px solid var(--line);margin-top:10px;padding-top:10px"></div>
+    ${isText ? `<div class="grid"><div class="row"><label>字距</label><input type="number" step="0.5" id="p-ls" value="${el.letterSpacing || 0}" oninput="commitVisual('letterSpacing', +this.value)"></div><div class="row inline" style="align-items:flex-end"><input type="checkbox" id="p-vert" ${el.vertical ? 'checked' : ''} onchange="commitVisual('vertical', this.checked)"><label style="margin:0">竖排</label></div></div>
+    <div class="row"><label>文字样式</label><div style="display:flex;gap:6px"><button type="button" class="mini2" onclick="applyTextStyle('标题')">标题</button><button type="button" class="mini2" onclick="applyTextStyle('正文')">正文</button><button type="button" class="mini2" onclick="applyTextStyle('标签')">标签</button></div></div>` : ''}
+    ${isImage ? `<div class="row"><label>滤镜</label>
+      <div class="frow"><span>亮度</span><input type="range" min="0" max="200" value="${(el.filter && el.filter.brightness) || 100}" oninput="commitVisual('filter', setF('brightness', +this.value))"></div>
+      <div class="frow"><span>对比</span><input type="range" min="0" max="200" value="${(el.filter && el.filter.contrast) || 100}" oninput="commitVisual('filter', setF('contrast', +this.value))"></div>
+      <div class="frow"><span>饱和</span><input type="range" min="0" max="200" value="${(el.filter && el.filter.saturate) || 100}" oninput="commitVisual('filter', setF('saturate', +this.value))"></div>
+      <div class="frow"><span>模糊</span><input type="range" min="0" max="20" value="${(el.filter && el.filter.blur) || 0}" oninput="commitVisual('filter', setF('blur', +this.value))"></div>
+      <div class="frow"><span>黑白</span><input type="range" min="0" max="100" value="${(el.filter && el.filter.grayscale) || 0}" oninput="commitVisual('filter', setF('grayscale', +this.value))"></div>
+    </div>
+    <div class="row"><label>遮罩</label><select id="p-clip" onchange="commitVisual('clip', this.value)"><option value="none" ${(el.clip || 'none') === 'none' ? 'selected' : ''}>无</option><option value="circle" ${el.clip === 'circle' ? 'selected' : ''}>圆形</option><option value="ellipse" ${el.clip === 'ellipse' ? 'selected' : ''}>椭圆</option></select></div>` : ''}
+    ${isRect ? `<div class="row inline"><input type="checkbox" id="p-grad" ${el.fill && el.fill.stops ? 'checked' : ''} onchange="toggleGradient(this.checked)"><label style="margin:0">渐变填充</label></div>
+    ${el.fill && el.fill.stops ? `<div class="grid"><div class="row"><label>色1</label><input type="color" value="${el.fill.stops[0] ? el.fill.stops[0].color : '#FACBC6'}" oninput="commitVisual('fill', setGrad(0, this.value))"></div><div class="row"><label>色2</label><input type="color" value="${el.fill.stops[1] ? el.fill.stops[1].color : '#465C47'}" oninput="commitVisual('fill', setGrad(1, this.value))"></div></div><div class="row"><label>角度</label><input type="number" value="${el.fill.angle || 180}" oninput="commitVisual('fill', setGradAngle(+this.value))"></div>` : ''}` : ''}
+    <div class="row"><label>透明度</label><input type="range" min="0" max="100" value="${el.opacity == null ? 100 : el.opacity}" oninput="commitVisual('opacity', +this.value)"></div>
+    <div class="row"><label>阴影（x / y / 模糊 / 色）</label><div style="display:flex;gap:6px"><input type="number" style="width:24%" value="${el.shadow ? el.shadow.x : 0}" oninput="commitVisual('shadow', setShadow('x', +this.value))"><input type="number" style="width:24%" value="${el.shadow ? el.shadow.y : 0}" oninput="commitVisual('shadow', setShadow('y', +this.value))"><input type="number" style="width:24%" value="${el.shadow ? el.shadow.blur : 0}" oninput="commitVisual('shadow', setShadow('blur', +this.value))"><input type="color" style="width:24%" value="${el.shadow ? el.shadow.color : '#00000055'}" oninput="commitVisual('shadow', setShadow('color', this.value))"></div></div>
+    <div class="row"><label>描边（宽 / 色）</label><div style="display:flex;gap:6px"><input type="number" style="width:50%" value="${el.stroke ? el.stroke.width : 0}" oninput="commitVisual('stroke', setStroke('width', +this.value))"><input type="color" style="width:50%" value="${el.stroke ? el.stroke.color : '#000000'}" oninput="commitVisual('stroke', setStroke('color', this.value))"></div></div>
+    <div class="row"><label>吸管 / 品牌色</label><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><button type="button" class="mini2" onclick="pickColor()">吸管</button>${(template.brandColors || []).map((c) => `<span class="sw" style="background:${c}" onclick="applyColor('${c}')" title="${c}"></span>`).join('')}<button type="button" class="mini2" onclick="addBrandColor()">＋</button></div></div>
     <div class="btnrow">
       <button onclick="reorder(-1)">上移</button>
       <button onclick="reorder(1)">下移</button>
