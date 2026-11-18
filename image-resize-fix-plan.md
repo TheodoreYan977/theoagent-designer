@@ -142,11 +142,11 @@ function startResize(e, el, dir) {
         else if (dir === 'w') { w = o.w - dx; h = w / r; y = o.y + (o.h - h) / 2; }
         else if (dir === 's') { h = o.h + dy; w = h * r; x = o.x + (o.w - w) / 2; }
         else                 { h = o.h - dy; w = h * r; x = o.x + (o.w - w) / 2; }
-      } else {                          // 角点：对角固定，等比缩放
+      } else {                          // 角点：对角固定，按真实比例等比缩放
         const nw = dir.includes('e') ? o.w + dx : o.w - dx;
         const nh = dir.includes('s') ? o.h + dy : o.h - dy;
-        const sc = Math.max(Math.abs(nw) / o.w, Math.abs(nh) / o.h);
-        w = o.w * sc; h = o.h * sc;
+        w = Math.max(Math.abs(nw), Math.abs(nh) * r);   // 取指针主导方向
+        h = w / r;
       }
     } else {
       if (dir.includes('e')) w = o.w + dx;
