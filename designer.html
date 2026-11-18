@@ -480,21 +480,54 @@ function alignSel(dir) {
   render();
 }
 
+/* ---- 图片真实宽高比：缓存 + 懒加载 ---- */
+function imageAspect(el) {
+  if (el && el.naturalW && el.naturalH) return el.naturalW / el.naturalH;
+  return null;
+}
+function ensureImageRatio(el, cb) {
+  if (!el || el.type !== 'image' || !el.src || (el.naturalW && el.naturalH)) { cb && cb(); return; }
+  const img = new Image();
+  img.onload = () => {
+    if (img.naturalWidth && img.naturalHeight) { el.naturalW = img.naturalWidth; el.naturalH = img.naturalHeight; }
+    cb && cb();
+  };
+  img.onerror = () => cb && cb();
+  img.src = resolveSrc(el.src);
+}
+
 function startResize(e, el, dir) {
   e.stopPropagation(); e.preventDefault();
   const s = scale();
   const sx = e.clientX, sy = e.clientY;
   const o = { x: el.x, y: el.y, w: el.w, h: el.h };
+  const nat = el.type === 'image' ? imageAspect(el) : null;
+  const r = nat || (o.h ? o.w / o.h : 1);
+  const proportional = el.type === 'image' && nat && !e.shiftKey;   // 图片角点/四边默认等比，Shift 临时自由拉伸
   const move = (ev) => {
     const dx = (ev.clientX - sx) / s, dy = (ev.clientY - sy) / s;
     let x = o.x, y = o.y, w = o.w, h = o.h;
-    if (dir.includes('e')) w = o.w + dx;
-    if (dir.includes('s')) h = o.h + dy;
-    if (dir.includes('w')) { w = o.w - dx; x = o.x + dx; }
-    if (dir.includes('n')) { h = o.h - dy; y = o.y + dy; }
+    if (proportional) {
+      if (dir.length === 1) {            // 四边：对边固定，另一轴居中，等比联动避免拉扁
+        if (dir === 'e')      { w = o.w + dx; h = w / r; y = o.y + (o.h - h) / 2; }
+        else if (dir === 'w') { w = o.w - dx; h = w / r; y = o.y + (o.h - h) / 2; }
+        else if (dir === 's') { h = o.h + dy; w = h * r; x = o.x + (o.w - w) / 2; }
+        else                  { h = o.h - dy; w = h * r; x = o.x + (o.w - w) / 2; }
+      } else {                          // 角点：对角固定，按真实比例等比缩放
+        const nw = dir.includes('e') ? o.w + dx : o.w - dx;
+        const nh = dir.includes('s') ? o.h + dy : o.h - dy;
+        w = Math.max(Math.abs(nw), Math.abs(nh) * r);   // 取指针主导方向
+        h = w / r;
+      }
+    } else {
+      if (dir.includes('e')) w = o.w + dx;
+      if (dir.includes('s')) h = o.h + dy;
+      if (dir.includes('w')) { w = o.w - dx; x = o.x + dx; }
+      if (dir.includes('n')) { h = o.h - dy; y = o.y + dy; }
+    }
     w = Math.max(8, Math.round(w)); h = Math.max(8, Math.round(h));
-    if (dir.includes('w')) x = Math.round(o.x + o.w - w);
-    if (dir.includes('n')) y = Math.round(o.y + o.h - h);
+    if (dir.includes('w')) x = Math.round(o.x + o.w - w);   // 右边缘固定
+    if (dir.includes('n')) y = Math.round(o.y + o.h - h);   // 下边缘固定
     el.x = x; el.y = y; el.w = w; el.h = h;
     updateElementStyle(el); positionOverlay();
   };
@@ -582,6 +615,7 @@ function select(id) {
   else selectedIds = [id];
   selectedId = id;
   applySelectionHighlight();
+  ensureImageRatio(el);
   populatePanel(selectedEl());
   renderLayers();
   renderSelection();
@@ -798,9 +832,10 @@ async function uploadImage(file) {
     if (!j.ok) { toast('上传失败：' + (j.error || '')); return; }
     const el = selectedEl();
     commitField('src', j.path);
-    if (el && el.naturalSize) {
-      try { applyNaturalSize(await naturalSize(file)); } catch {}
-    }
+    let n = null;
+    try { n = await naturalSize(file); } catch {}
+    if (el && n) { el.naturalW = n.w; el.naturalH = n.h; }
+    if (el && el.naturalSize && n) { applyNaturalSize(n); }
     const thumb = $('p-thumb');
     if (thumb) thumb.innerHTML = '<img src="' + resolveSrc(j.path) + '" style="max-width:100%;max-height:90px;border-radius:6px;opacity:.9">';
     const inp = $('p-src'); if (inp) inp.value = j.path;
@@ -827,7 +862,11 @@ async function toggleNatural(checked) {
   commitField('naturalSize', checked);
   if (checked && el.src) {
     const img = new Image();
-    img.onload = () => { if (el.naturalSize) applyNaturalSize({ w: img.naturalWidth, h: img.naturalHeight }); };
+    img.onload = () => {
+      if (!img.naturalWidth || !img.naturalHeight) return;
+      el.naturalW = img.naturalWidth; el.naturalH = img.naturalHeight;
+      if (el.naturalSize) applyNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
+    };
     img.src = resolveSrc(el.src);
   }
 }
@@ -883,6 +922,7 @@ async function cropApply() {
     if (!j.ok) { toast('上传裁剪图失败'); return; }
     if (!el.preCropSrc) el.preCropSrc = el.src;
     commitField('src', j.path);
+    el.naturalW = sw; el.naturalH = sh;
     const ar = sw / sh;
     let nw = el.w, nh = el.w / ar;
     const ab = activeBoard();
@@ -900,7 +940,9 @@ function restoreOriginal() {
   if (!el || !el.preCropSrc) return;
   const orig = el.preCropSrc;
   el.preCropSrc = '';
+  el.naturalW = 0; el.naturalH = 0;
   commitField('src', orig);
+  ensureImageRatio(el);
   toast('已恢复原图');
 }
 (function initCrop() {
@@ -977,11 +1019,13 @@ function commitField(key, value) {
 function commitSize(key, value) {
   const el = selectedEl();
   if (!el || !(value > 0)) return;
-  const ratio = (el.w && el.h) ? el.w / el.h : 1;
-  el[key] = value;
   if (el.ratioLock) {
-    if (key === 'w') el.h = Math.max(1, Math.round(value / ratio));
-    else el.w = Math.max(1, Math.round(value * ratio));
+    const nat = imageAspect(el);
+    const ratio = nat != null ? nat : ((el.w && el.h) ? el.w / el.h : 1);
+    if (key === 'w') { el.w = value; el.h = Math.max(1, Math.round(value / ratio)); }
+    else { el.h = value; el.w = Math.max(1, Math.round(value * ratio)); }
+  } else {
+    el[key] = value;
   }
   snapshot(key + ':' + el.id);
   const d = document.querySelector(`[data-id="${CSS.escape(el.id)}"]`);
@@ -993,6 +1037,7 @@ function toggleRatio() {
   const el = selectedEl();
   if (!el) return;
   el.ratioLock = !el.ratioLock;
+  ensureImageRatio(el);
   snapshot('ratioLock:' + el.id);
   populatePanel(el);
 }
@@ -1481,9 +1526,9 @@ canvasEl.addEventListener('drop', async (e) => {
     let j = { ok: false, error: 'HTTP ' + res.status };
     try { j = await res.json(); } catch {}
     if (!j.ok) { toast('上传失败：' + (j.error || '')); return; }
-    let w = 400, h = 300;
-    try { const n = await naturalSize(f); w = n.w; h = n.h; } catch {}
-    const el = { id: 'image-' + Date.now().toString(36), type: 'image', x, y, w, h, src: j.path, fit: 'cover', radius: 12, naturalSize: true };
+    let w = 400, h = 300, nw = 0, nh = 0;
+    try { const n = await naturalSize(f); w = nw = n.w; h = nh = n.h; } catch {}
+    const el = { id: 'image-' + Date.now().toString(36), type: 'image', x, y, w, h, naturalW: nw, naturalH: nh, src: j.path, fit: 'cover', radius: 12, naturalSize: true };
     ab.elements.push(el);
     snapshot('add:' + el.id, true);
     render();
