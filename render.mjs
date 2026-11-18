@@ -122,7 +122,7 @@ body{background:${ab.background || '#fff'};-webkit-font-smoothing:antialiased;}
 }
 
 /** 把模板的每块画布渲成 PNG。content = 扁平占位符映射。 */
-export async function renderArtboards(template, content, { outDir, scale = 2 } = {}) {
+export async function renderArtboards(template, content, { outDir, scale = 1 } = {}) {
   const pages = template.pages || template.artboards || [];
   const fontsUsed = [...new Set(pages.flatMap((a) => a.elements.map((e) => e.font)))];
   const faceCss = fontCss(fontsUsed);

@@ -77,8 +77,8 @@ export function startServer(port = PORT) {
         return json(res, 200, { ok: true, path: 'uploads/' + fname });
       }
       if (url.pathname === '/api/render' && req.method === 'POST') {
-        const { template, content } = JSON.parse(await readBody(req));
-        const results = await renderArtboards(template, content, { outDir: OUTPUT });
+        const { template, content, scale } = JSON.parse(await readBody(req));
+        const results = await renderArtboards(template, content, { outDir: OUTPUT, scale: Math.max(1, Math.min(3, Number(scale) || 1)) });
         return json(res, 200, { ok: true, files: results.map((r) => ({ id: r.id, url: `/preview/${r.id}.png`, width: r.width, height: r.height })) });
       }
       if (url.pathname === '/api/templates' && req.method === 'GET') {

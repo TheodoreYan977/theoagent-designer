@@ -161,6 +161,7 @@
   <button onclick="alignSel('top')" title="顶部">⇡</button>
   <button onclick="alignSel('vcenter')" title="垂直居中">↕</button>
   <button onclick="alignSel('bottom')" title="底部">⇣</button>
+  <button onclick="resetView()" title="回到画布中心">⌖</button>
 </div>
 <main>
   <aside id="content-panel"></aside>
@@ -183,6 +184,7 @@
     <div class="exp-bar">
       <div class="exp-tabs" id="exp-tabs"></div>
       <div class="exp-right">
+        <select id="exp-scale" onchange="exportPng()" style="border:1px solid var(--line);background:#1c1c1c;color:var(--ink);border-radius:6px;padding:5px 8px;font-size:12px"><option value="1">1×</option><option value="2">2×</option></select>
         <button class="mini2" onclick="downloadCurrent()">下载本页</button>
         <button class="mini2" onclick="downloadAll()">下载全部</button>
         <button class="mini2" onclick="$('export-modal').classList.remove('show')">关闭</button>
@@ -196,8 +198,8 @@
   <div class="pm-box">
     <h3>新建页面</h3>
     <label>名称<input id="pm-name" type="text" value="新页面"></label>
-    <label>类型<select id="pm-kind" onchange="pmKindChange()"><option value="cover">封面 1242×1660</option><option value="note">图文笔记 1080×1440</option><option value="custom">自定义</option></select></label>
-    <div class="pm-size"><label>宽<input id="pm-w" type="number" value="1242"></label><label>高<input id="pm-h" type="number" value="1660"></label></div>
+    <label>类型<select id="pm-kind" onchange="pmKindChange()"><option value="cover">封面 1242×1660 px</option><option value="note">图文笔记 1080×1440 px</option><option value="custom">自定义</option></select></label>
+    <div class="pm-size"><label>宽(px)<input id="pm-w" type="number" value="1242"></label><label>高(px)<input id="pm-h" type="number" value="1660"></label></div>
     <div class="pm-actions"><button onclick="closeNewPage()">取消</button><button class="primary" onclick="createPage()">创建</button></div>
   </div>
 </div>
@@ -613,11 +615,11 @@ function pageSizeHtml() {
   return `<div class="row" style="border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:10px;background:#232323">
     <label style="margin:0 0 6px">当前页 · ${escHtml(ab.name)}</label>
     <div style="display:flex;gap:6px;align-items:flex-end">
-      <div style="flex:1;min-width:0"><label style="margin:0">宽</label><input type="number" id="pg-w" value="${ab.width}" style="height:30px"></div>
-      <div style="flex:1;min-width:0"><label style="margin:0">高</label><input type="number" id="pg-h" value="${ab.height}" style="height:30px"></div>
+      <div style="flex:1;min-width:0"><label style="margin:0">宽(px)</label><input type="number" id="pg-w" value="${ab.width}" style="height:30px"></div>
+      <div style="flex:1;min-width:0"><label style="margin:0">高(px)</label><input type="number" id="pg-h" value="${ab.height}" style="height:30px"></div>
       <button type="button" class="mini2" style="flex:0 0 auto" onclick="applyPageSize()">应用</button>
     </div>
-    <div style="color:var(--muted);font-size:11px;margin-top:4px">画布 ${ab.width} × ${ab.height}</div>
+    <div style="color:var(--muted);font-size:11px;margin-top:4px">画布 ${ab.width} × ${ab.height} px</div>
   </div>`;
 }
 function applyPageSize() {
@@ -1107,7 +1109,8 @@ async function save() {
 let expFiles = [], expActive = '';
 async function exportPng() {
   toast('正在渲染…');
-  const r = await fetch('/api/render', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ template, content: sample }) });
+  const sc = Math.max(1, Math.min(3, Number(($('exp-scale') || {}).value) || 1));
+  const r = await fetch('/api/render', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ template, content: sample, scale: sc }) });
   const j = await r.json();
   if (!j.ok) { toast('渲染失败：' + (j.error || '')); return; }
   const t = Date.now();
@@ -1191,8 +1194,7 @@ function renderContentPanel() {
   const rows = keys.map((k) => {
     const g = isGlobalKey(k);
     const empty = sample[k] === undefined || sample[k] === '';
-    const del = ((ab.placeholders || []).includes(k) && !elemKeys.has(k))
-      ? `<button class="mini2" title="删除占位符" onclick="removePlaceholder('${k}')">×</button>` : '';
+    const del = `<button class="mini2" title="删除占位符" onclick="deletePlaceholder('${k}')">×</button>`;
     const todo = empty ? ' <em class="todo">待填写</em>' : '';
     const note = ph['{' + k + '}'] || '';
     return `<div class="phblock ${g ? 'global' : ''}">
@@ -1232,14 +1234,29 @@ function addPlaceholder() {
   refreshPropsIfText();
   toast('已添加占位符 {' + key + '}');
 }
-function removePlaceholder(key) {
+function deletePlaceholder(key) {
   const ab = activeBoard(); if (!ab) return;
-  if (!confirm('从当前页面移除占位符「' + key + '」？（内容值保留）')) return;
-  ab.placeholders = (ab.placeholders || []).filter((k) => k !== key);
+  let used = 0;
+  for (const pg of template.pages) for (const el of pg.elements) {
+    if ((el.content && String(el.content).includes('{' + key + '}')) || (el.src && String(el.src).includes('{' + key + '}'))) used++;
+  }
+  const msg = '删除占位符「' + key + '」？' + (used ? '\n项目里有 ' + used + ' 个元素引用了它，会一并清掉元素里的 {' + key + '}。' : '');
+  if (!confirm(msg)) return;
+  template.globalKeys = (template.globalKeys || []).filter((k) => k !== key);
+  const reg = '{' + key + '}';
+  for (const pg of template.pages) {
+    pg.placeholders = (pg.placeholders || []).filter((k) => k !== key);
+    pg.order = (pg.order || []).filter((k) => k !== key);
+    for (const el of pg.elements) {
+      if (el.content) el.content = String(el.content).split(reg).join('');
+      if (el.src) el.src = String(el.src).split(reg).join('');
+    }
+  }
+  if (template.placeholders) delete template.placeholders[reg];
+  delete sample[key];
   snapshot('ph:del:' + key, true);
-  renderContentPanel();
-  refreshPropsIfText();
-  toast('已移除占位符');
+  render(); populatePanel(selectedEl()); renderContentPanel();
+  toast('已删除占位符 {' + key + '}');
 }
 function toggleGlobal(key, checked) {
   const ab = activeBoard(); if (!ab) return;
@@ -1433,6 +1450,7 @@ canvasEl.addEventListener('drop', async (e) => {
 
 // 缩放 / 平移 / 复位
 function applyPan() { const st = $('stage'); if (st) st.style.transform = `translate(${panX}px,${panY}px)`; }
+function resetView() { viewZoom = 1; panX = 0; panY = 0; render(); toast('已回到画布中心'); }
 $('canvas').addEventListener('wheel', (e) => {
   if (!e.ctrlKey) return;
   e.preventDefault();
