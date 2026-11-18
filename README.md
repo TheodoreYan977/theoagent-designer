@@ -188,11 +188,24 @@ Mac 上没有 `start.bat`，但我们提供了 **`start.command`**，同样可�
 
 ---
 
+## 卸载（移除本项目）
+
+**Windows**：双击项目里的 **`uninstall.bat`** → 按提示输入 `YES` 确认。
+它会先停掉本地服务（端口 8090），再删除整个项目文件夹（含模板、上传、导出、依赖），**不可恢复**。
+
+**macOS**：直接在 Finder 里把 `theoagent-designer` 文件夹拖到废纸篓即可；若服务还在跑，先关掉终端窗口。
+
+> 只想清理缓存/生成文件、保留源码？手动删 `node_modules/`、`output/`、`uploads/`、`templates/` 即可。
+
+---
+
 ## 文件结构
 
 ```
 theoagent-designer/
 ├─ start.bat          Windows 一键启动
+├─ start.command      macOS 一键启动（双击）
+├─ uninstall.bat      Windows 一键移除本项目
 ├─ server.mjs         本地服务（端口 8090）
 ├─ designer.html      设计器页面（前端）
 ├─ render.mjs         用 Chrome/Edge 把模板渲成 PNG
