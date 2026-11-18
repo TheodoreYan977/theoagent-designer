@@ -62,6 +62,19 @@
   #toolbar{width:52px;flex:0 0 52px;border-left:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;gap:8px;padding:12px 8px;align-items:center;}
   .tb{width:36px;height:36px;border:1px solid var(--line);background:#1c1c1c;color:var(--ink);border-radius:8px;cursor:pointer;font-size:16px;line-height:1;padding:0;}
   .tb:hover{border-color:var(--moss);}
+  .resizer{width:5px;flex:0 0 5px;cursor:col-resize;background:transparent;}
+  .resizer:hover{background:var(--moss);}
+  #export-modal{position:fixed;inset:0;background:rgba(0,0,0,.88);display:none;align-items:center;justify-content:center;z-index:140;}
+  #export-modal.show{display:flex;}
+  .exp-box{width:min(92vw,1000px);height:92vh;display:flex;flex-direction:column;background:#1a1a1a;border:1px solid var(--line);border-radius:12px;overflow:hidden;}
+  .exp-bar{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);}
+  .exp-tabs{display:flex;gap:6px;overflow-x:auto;}
+  .exp-tabs .xtab{padding:6px 12px;border:1px solid var(--line);border-radius:8px;background:#1c1c1c;color:var(--ink);cursor:pointer;font-size:13px;white-space:nowrap;}
+  .exp-tabs .xtab.on{border-color:var(--moss);color:var(--moss);}
+  .exp-right{display:flex;gap:6px;}
+  .exp-body{flex:1;display:flex;align-items:center;justify-content:center;padding:14px;overflow:auto;}
+  .exp-body img{max-width:100%;max-height:100%;object-fit:contain;}
+  #content-panel .phnote{height:26px;font-size:12px;color:var(--muted);}
   #layers{width:160px;flex:0 0 160px;overflow-y:auto;padding:10px;border-left:1px solid var(--line);background:var(--panel);}
   #layers .ltitle{font-size:11px;color:var(--muted);letter-spacing:.08em;margin-bottom:6px;}
   .layer{display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:6px;font-size:12px;color:var(--ink);cursor:pointer;user-select:none;}
@@ -151,7 +164,9 @@
 </div>
 <main>
   <aside id="content-panel"></aside>
+  <div class="resizer" id="rz-content"></div>
   <div id="canvas"><div id="stage"><div id="board"></div></div></div>
+  <div class="resizer" id="rz-layers"></div>
   <aside id="layers"></aside>
   <aside id="panel"><div id="props"></div></aside>
   <div id="toolbar">
@@ -162,6 +177,20 @@
   </div>
 </main>
 <div id="status"></div>
+
+<div id="export-modal">
+  <div class="exp-box">
+    <div class="exp-bar">
+      <div class="exp-tabs" id="exp-tabs"></div>
+      <div class="exp-right">
+        <button class="mini2" onclick="downloadCurrent()">下载本页</button>
+        <button class="mini2" onclick="downloadAll()">下载全部</button>
+        <button class="mini2" onclick="$('export-modal').classList.remove('show')">关闭</button>
+      </div>
+    </div>
+    <div class="exp-body"><img id="exp-img" src="" alt=""></div>
+  </div>
+</div>
 
 <div id="page-modal">
   <div class="pm-box">
@@ -579,12 +608,71 @@ function addBrandColor() {
   else toast('已在品牌色里');
 }
 
+function pageSizeHtml() {
+  const ab = activeBoard(); if (!ab) return '';
+  return `<div class="row" style="border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:10px;background:#232323">
+    <label style="margin:0 0 6px">当前页 · ${escHtml(ab.name)}</label>
+    <div style="display:flex;gap:6px;align-items:flex-end">
+      <div style="flex:1;min-width:0"><label style="margin:0">宽</label><input type="number" id="pg-w" value="${ab.width}" style="height:30px"></div>
+      <div style="flex:1;min-width:0"><label style="margin:0">高</label><input type="number" id="pg-h" value="${ab.height}" style="height:30px"></div>
+      <button type="button" class="mini2" style="flex:0 0 auto" onclick="applyPageSize()">应用</button>
+    </div>
+    <div style="color:var(--muted);font-size:11px;margin-top:4px">画布 ${ab.width} × ${ab.height}</div>
+  </div>`;
+}
+function applyPageSize() {
+  const ab = activeBoard(); if (!ab) return;
+  const w = Math.max(60, Math.round(+$('pg-w').value || ab.width));
+  const h = Math.max(60, Math.round(+$('pg-h').value || ab.height));
+  if (w === ab.width && h === ab.height) { toast('尺寸没有变化'); return; }
+  if (!confirm('把页面「' + ab.name + '」改为 ' + w + ' × ' + h + ' ？')) return;
+  ab.width = w; ab.height = h;
+  snapshot('page:size:' + ab.id, true);
+  render();
+  populatePanel(selectedEl());
+  toast('页面尺寸已更新');
+}
+function initResizers() {
+  const bind = (handleId, targetId, sign, min, max) => {
+    const h = $(handleId), t = $(targetId);
+    if (!h || !t) return;
+    h.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startW = t.getBoundingClientRect().width;
+      const move = (ev) => {
+        const w = Math.max(min, Math.min(max, startW + (ev.clientX - startX) * sign));
+        t.style.width = w + 'px';
+        t.style.flex = '0 0 ' + w + 'px';
+        render();
+      };
+      const up = () => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        try { localStorage.setItem('dsh-width-' + targetId, String(Math.round(t.getBoundingClientRect().width))); } catch (er) {}
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+    });
+  };
+  bind('rz-content', 'content-panel', 1, 180, 560);
+  bind('rz-layers', 'layers', -1, 120, 400);
+}
+function applySavedWidths() {
+  for (const id of ['content-panel', 'layers']) {
+    try {
+      const w = parseInt(localStorage.getItem('dsh-width-' + id), 10);
+      if (w > 0) { const el = $(id); if (el) { el.style.width = w + 'px'; el.style.flex = '0 0 ' + w + 'px'; } }
+    } catch (e) {}
+  }
+}
+
 function populatePanel(el) {
   const p = $('props');
-  if (!el) { p.innerHTML = '<div class="empty">点画布上的元素编辑</div>'; return; }
+  if (!el) { p.innerHTML = pageSizeHtml() + '<div class="empty">点画布上的元素编辑</div>'; return; }
   const isText = el.type === 'text', isImage = el.type === 'image', isRect = el.type === 'rect';
   const phKeys = insertDropdownKeys();
-  p.innerHTML = `
+  p.innerHTML = pageSizeHtml() + `
     <div class="row"><label>元素类型</label><div style="color:var(--moss)">${el.type} · <code style="font-size:11px">${el.id}</code></div></div>
     ${isText ? `<div class="row"><label>内容（可含 {占位符}）</label><textarea id="p-content" oninput="commitField('content', this.value)">${escHtml(el.content || '')}</textarea>
       <div class="ph" style="margin-top:6px"><select id="ph-sel">${phKeys.map((k) => { const g = isGlobalKey(k); return `<option value="{${k}}" style="${g ? 'background:#6a5a20;color:#fff' : ''}">${g ? '★ ' : ''}{${k}}</option>`; }).join('')}</select><button onclick="insertPh()">插入</button></div></div>` : ''}
@@ -1016,13 +1104,42 @@ async function save() {
   toast(j.ok ? '已保存模板' : '保存失败');
 }
 
+let expFiles = [], expActive = '';
 async function exportPng() {
   toast('正在渲染…');
   const r = await fetch('/api/render', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ template, content: sample }) });
   const j = await r.json();
   if (!j.ok) { toast('渲染失败：' + (j.error || '')); return; }
-  toast('已导出，新窗口查看');
-  for (const f of j.files) window.open(f.url + '?t=' + Date.now(), '_blank');
+  const t = Date.now();
+  expFiles = j.files.map((f) => ({ ...f, url: f.url + '?t=' + t }));
+  expActive = (expFiles.find((f) => f.id === activeId) || expFiles[0]).id;
+  $('exp-tabs').innerHTML = expFiles.map((f) => {
+    const pg = template.pages.find((p) => p.id === f.id);
+    return `<button class="xtab ${f.id === expActive ? 'on' : ''}" data-id="${f.id}" onclick="expSwitch('${f.id}')">${escHtml(pg ? pg.name : f.id)}</button>`;
+  }).join('');
+  showExp();
+  $('export-modal').classList.add('show');
+  toast('渲染完成，可预览/下载');
+}
+function expSwitch(id) { expActive = id; showExp(); }
+function showExp() {
+  const f = expFiles.find((x) => x.id === expActive); if (!f) return;
+  $('exp-img').src = f.url;
+  document.querySelectorAll('#exp-tabs .xtab').forEach((b) => b.classList.toggle('on', b.dataset.id === expActive));
+}
+function downloadFile(url, name) {
+  const a = document.createElement('a');
+  a.href = url; a.download = name; a.style.display = 'none';
+  document.body.appendChild(a); a.click(); a.remove();
+}
+function downloadCurrent() {
+  const f = expFiles.find((x) => x.id === expActive); if (!f) return;
+  downloadFile(f.url, f.id + '.png');
+  toast('已下载当前页');
+}
+function downloadAll() {
+  expFiles.forEach((f, i) => setTimeout(() => downloadFile(f.url, f.id + '.png'), i * 400));
+  toast('开始下载全部（浏览器若提示允许多个下载请允许）');
 }
 
 (async function init() {
@@ -1033,10 +1150,12 @@ async function exportPng() {
   template.globalKeys = template.globalKeys || [];
   activeId = template.pages[0].id;
   history = [clone(template)]; index = 0; updateButtons();
+  applySavedWidths();
   buildTabs();
   render();
   populatePanel(null);
   renderContentPanel();
+  initResizers();
   window.addEventListener('resize', render);
 })();
 
@@ -1050,12 +1169,16 @@ function elementPlaceholderKeys(page) {
   return set;
 }
 function pagePlaceholderKeys(page) {
-  const order = [];
-  const push = (k) => { if (k && order.indexOf(k) === -1) order.push(k); };
+  page.order = page.order || [];
+  const need = [];
+  const push = (k) => { if (k && need.indexOf(k) === -1) need.push(k); };
   for (const k of (template.globalKeys || [])) push(k);
   for (const k of (page.placeholders || [])) push(k);
   for (const k of elementPlaceholderKeys(page)) push(k);
-  return order;
+  const kept = page.order.filter((k) => need.indexOf(k) >= 0);
+  for (const k of need) if (kept.indexOf(k) === -1) kept.push(k);
+  page.order = kept;
+  return kept;
 }
 function isGlobalKey(k) { return (template.globalKeys || []).includes(k); }
 function refreshPropsIfText() { const el = selectedEl(); if (el && el.type === 'text') populatePanel(el); }
@@ -1071,9 +1194,10 @@ function renderContentPanel() {
     const del = ((ab.placeholders || []).includes(k) && !elemKeys.has(k))
       ? `<button class="mini2" title="删除占位符" onclick="removePlaceholder('${k}')">×</button>` : '';
     const todo = empty ? ' <em class="todo">待填写</em>' : '';
+    const note = ph['{' + k + '}'] || '';
     return `<div class="phblock ${g ? 'global' : ''}">
       <div class="phhead">
-        <span class="phname">${escHtml(ph['{' + k + '}'] || k)} <code>{${k}}</code>${todo}</span>
+        <span class="phname" ondblclick="renamePlaceholder('${k}')" title="双击重命名"><code>{${k}}</code>${todo}</span>
         <span class="phops">
           <label class="gchk"><input type="checkbox" ${g ? 'checked' : ''} onchange="toggleGlobal('${k}', this.checked)">全局</label>
           <button class="mini2" onclick="movePlaceholder('${k}', -1)" title="上移">↑</button>
@@ -1081,7 +1205,8 @@ function renderContentPanel() {
           ${del}
         </span>
       </div>
-      <input type="text" data-ck="${k}" value="${escHtml(sample[k] || '')}" oninput="setContent('${k}', this.value)">
+      <input type="text" class="phnote" data-note="${k}" placeholder="备注（这个占位符填什么）" value="${escHtml(note)}" oninput="setPhNote('${k}', this.value)">
+      <input type="text" data-ck="${k}" placeholder="内容值" value="${escHtml(sample[k] || '')}" oninput="setContent('${k}', this.value)">
     </div>`;
   }).join('');
   box.innerHTML = `<div class="ltitle">内容 / 占位符<button class="mini" onclick="saveContent()">保存</button></div>
@@ -1136,20 +1261,55 @@ function toggleGlobal(key, checked) {
 }
 function movePlaceholder(key, dir) {
   const ab = activeBoard(); if (!ab) return;
-  template.globalKeys = template.globalKeys || [];
-  ab.placeholders = ab.placeholders || [];
-  const inGlobal = template.globalKeys.includes(key);
-  const inLocal = ab.placeholders.includes(key);
-  if (!inGlobal && !inLocal) ab.placeholders.push(key);
-  const arr = inGlobal ? template.globalKeys : ab.placeholders;
-  const i = arr.indexOf(key);
+  const order = pagePlaceholderKeys(ab);
+  const i = order.indexOf(key);
   if (i < 0) return;
   const j = i + dir;
-  if (j < 0 || j >= arr.length) { toast('已经是' + (dir < 0 ? '最上' : '最下') + '一个'); return; }
-  [arr[i], arr[j]] = [arr[j], arr[i]];
+  if (j < 0 || j >= order.length) { toast('已经是' + (dir < 0 ? '最上' : '最下') + '一个'); return; }
+  [ab.order[i], ab.order[j]] = [ab.order[j], ab.order[i]];
   snapshot('ph:move:' + key, true);
   renderContentPanel();
   toast('已移动');
+}
+function setPhNote(key, val) {
+  template.placeholders = template.placeholders || {};
+  template.placeholders['{' + key + '}'] = val;
+  snapshot('ph:note:' + key + ':' + val);
+}
+function renamePlaceholder(oldKey) {
+  const ab = activeBoard(); if (!ab) return;
+  const input = prompt('重命名占位符（仅英文+数字+下划线）', oldKey);
+  if (input === null) return;
+  const nk = String(input).replace(/[{}]/g, '').trim();
+  if (!nk) { toast('名称不能为空'); return; }
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(nk)) { toast('只能英文/数字/下划线，且以字母或下划线开头'); return; }
+  if (nk === oldKey) return;
+  const allKeys = new Set();
+  for (const pg of template.pages) {
+    for (const k of (pg.placeholders || [])) allKeys.add(k);
+    for (const k of elementPlaceholderKeys(pg)) allKeys.add(k);
+    for (const k of (pg.order || [])) allKeys.add(k);
+  }
+  for (const k of (template.globalKeys || [])) allKeys.add(k);
+  if (allKeys.has(nk)) { toast('占位符「' + nk + '」已存在，不能重名'); return; }
+  const reg = '{' + oldKey + '}', nreg = '{' + nk + '}';
+  if (template.placeholders && template.placeholders[reg] !== undefined) {
+    template.placeholders[nreg] = template.placeholders[reg];
+    delete template.placeholders[reg];
+  }
+  template.globalKeys = (template.globalKeys || []).map((k) => (k === oldKey ? nk : k));
+  for (const pg of template.pages) {
+    pg.placeholders = (pg.placeholders || []).map((k) => (k === oldKey ? nk : k));
+    pg.order = (pg.order || []).map((k) => (k === oldKey ? nk : k));
+    for (const el of pg.elements) {
+      if (el.content) el.content = String(el.content).split(reg).join(nreg);
+      if (el.src) el.src = String(el.src).split(reg).join(nreg);
+    }
+  }
+  if (sample[oldKey] !== undefined) { sample[nk] = sample[oldKey]; delete sample[oldKey]; }
+  snapshot('ph:rename:' + oldKey + '>' + nk, true);
+  render(); populatePanel(selectedEl()); renderContentPanel();
+  toast('已重命名为 {' + nk + '}');
 }
 function insertDropdownKeys() {
   const eff = pagePlaceholderKeys(activeBoard());
