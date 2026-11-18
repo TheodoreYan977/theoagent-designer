@@ -34,6 +34,28 @@
 
 ---
 
+## macOS 用户
+
+Mac 上没有 `start.bat`，用「终端」操作即可（渲染器已内置 macOS 的 Chrome / Edge / Chromium 路径，可以直接导出）：
+
+1. 安装 Node.js 20+：去 [nodejs.org](https://nodejs.org/) 下载 LTS 安装包；或用 Homebrew：`brew install node`。
+2. 获取项目：`git clone https://github.com/TheodoreYan977/theoagent-designer.git`，或在 GitHub 页面点「Code → Download ZIP」后解压。
+3. 打开「终端」，进入项目目录后执行：
+   ```bash
+   cd theoagent-designer
+   npm install
+   node server.mjs
+   ```
+4. 浏览器会自动打开 `http://127.0.0.1:8090`（没自动打开就手动访问）。
+5. **导出 PNG** 需要本机装有 Google Chrome / Microsoft Edge / Chromium（装一个即可）。如果装在非默认位置，启动前设置：
+   ```bash
+   export CHROME_PATH="/你的路径/Google Chrome"
+   node server.mjs
+   ```
+6. 关闭服务：在终端按 `Ctrl + C`。
+
+---
+
 ## 界面速览
 
 ```
