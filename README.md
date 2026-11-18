@@ -37,10 +37,19 @@
 
 ## macOS 用户
 
-Mac 上没有 `start.bat`，用「终端」操作即可（渲染器已内置 macOS 的 Chrome / Edge / Chromium 路径，可以直接导出）：
+Mac 上没有 `start.bat`，但我们提供了 **`start.command`**，同样可以**双击一键启动**（渲染器已内置 macOS 的 Chrome / Edge / Chromium 路径，可直接导出）。
+
+**方式一：双击一键启动（推荐）**
 
 1. 安装 Node.js 20+：去 [nodejs.org](https://nodejs.org/) 下载 LTS 安装包；或用 Homebrew：`brew install node`。
 2. 获取项目：`git clone https://github.com/TheodoreYan977/theoagent-designer.git`，或在 GitHub 页面点「Code → Download ZIP」后解压。
+3. **双击项目里的 `start.command`**：会打开一个终端窗口，首次自动安装依赖，然后自动打开浏览器 `http://127.0.0.1:8090`。
+4. 关闭服务：关掉那个终端窗口，或按 `Ctrl + C`。
+
+> 如果双击提示「无法打开 / 没有权限」：右键点 `start.command` → 打开；或先在终端执行一次 `chmod +x start.command` 再双击。
+
+**方式二：终端手动（备用）**
+
 3. 打开「终端」，进入项目目录后执行：
    ```bash
    cd theoagent-designer
