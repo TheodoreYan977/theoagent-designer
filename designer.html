@@ -907,7 +907,7 @@ function createPage() {
   const kind = $('pm-kind').value;
   const w = Math.max(1, Math.round(+$('pm-w').value || 1080));
   const h = Math.max(1, Math.round(+$('pm-h').value || 1440));
-  const page = { id: 'page-' + Date.now().toString(36), name, kind: kind === 'custom' ? 'note' : kind, width: w, height: h, background: '#FBF7F0', elements: [] };
+  const page = { id: 'page-' + Date.now().toString(36), name, kind: kind === 'custom' ? 'note' : kind, width: w, height: h, background: '#FBF7F0', elements: [], placeholders: [] };
   template.pages.push(page);
   activeId = page.id;
   clearSel();
@@ -946,6 +946,7 @@ function switchBoard(id) {
   buildTabs();
   render();
   populatePanel(null);
+  renderContentPanel();
 }
 
 async function openTplLib() { $('tpl-modal').classList.add('show'); await refreshTplList(); }
@@ -976,6 +977,7 @@ async function loadTemplate(name) {
     if (!r.ok) { toast('模板不存在'); return; }
     const t = await r.json();
     if (t.artboards && !t.pages) t.pages = t.artboards;
+    for (const pg of t.pages) pg.placeholders = pg.placeholders || [];
     template = t;
     activeId = template.pages[0].id;
     clearSel();
@@ -1013,6 +1015,7 @@ async function exportPng() {
   const [t, s] = await Promise.all([fetch('/api/template').then((r) => r.json()), fetch('/api/sample').then((r) => r.json())]);
   template = t; sample = s;
   if (template.artboards && !template.pages) template.pages = template.artboards; // 兼容旧格式
+  for (const pg of template.pages) pg.placeholders = pg.placeholders || [];
   activeId = template.pages[0].id;
   history = [clone(template)]; index = 0; updateButtons();
   buildTabs();
@@ -1023,22 +1026,58 @@ async function exportPng() {
 })();
 
 /* ---- 左侧内容 / 占位符面板（即开即用：固定版式 + 只改内容） ---- */
-function usedPlaceholders() {
+function elementPlaceholderKeys(page) {
   const set = new Set();
-  for (const pg of template.pages) for (const el of pg.elements) {
+  for (const el of page.elements) {
     if (el.content) { const m = String(el.content).match(/\{(\w+)\}/g); if (m) m.forEach((x) => set.add(x.replace(/[{}]/g, ''))); }
     if (el.src) { const m = String(el.src).match(/\{(\w+)\}/g); if (m) m.forEach((x) => set.add(x.replace(/[{}]/g, ''))); }
   }
+  return set;
+}
+function pagePlaceholderKeys(page) {
+  const set = elementPlaceholderKeys(page);
+  if (page.placeholders) for (const k of page.placeholders) set.add(k);
   return [...set];
 }
 function renderContentPanel() {
   const box = $('content-panel'); if (!box) return;
+  const ab = activeBoard(); if (!ab) return;
   const ph = template.placeholders || {};
-  const keys = usedPlaceholders();
-  const rows = keys.map((k) =>
-    `<div class="row"><label>${escHtml(ph['{' + k + '}'] || k)} <code>{${k}}</code></label><input type="text" data-ck="${k}" value="${escHtml(sample[k] || '')}" oninput="setContent('${k}', this.value)"></div>`
-  ).join('');
-  box.innerHTML = `<div class="ltitle">内容 / 占位符<button class="mini" onclick="saveContent()">保存</button></div>` + (rows || '<div class="empty">模板里没有占位符</div>');
+  const elemKeys = elementPlaceholderKeys(ab);
+  const keys = pagePlaceholderKeys(ab);
+  const rows = keys.map((k) => {
+    const manual = (ab.placeholders || []).includes(k);
+    const del = (manual && !elemKeys.has(k)) ? `<button class="mini" title="删除占位符" onclick="removePlaceholder('${k}')">×</button>` : '';
+    return `<div class="row"><label style="display:flex;justify-content:space-between;align-items:center"><span>${escHtml(ph['{' + k + '}'] || k)} <code>{${k}}</code></span>${del}</label><input type="text" data-ck="${k}" value="${escHtml(sample[k] || '')}" oninput="setContent('${k}', this.value)"></div>`;
+  }).join('');
+  box.innerHTML = `<div class="ltitle">内容 / 占位符<button class="mini" onclick="saveContent()">保存</button></div>
+    <div class="row"><button class="mini" style="width:100%" onclick="addPlaceholder()">＋ 添加占位符</button></div>` + (rows || '<div class="empty">当前页还没有占位符</div>');
+}
+function addPlaceholder() {
+  const ab = activeBoard(); if (!ab) return;
+  const input = prompt('输入占位符名称（仅英文+数字+下划线，如 title_en）');
+  if (input === null) return;
+  const key = String(input).replace(/[{}]/g, '').trim();
+  if (!key) { toast('名称不能为空'); return; }
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) { toast('只能英文/数字/下划线，且以字母或下划线开头'); return; }
+  if (pagePlaceholderKeys(ab).includes(key)) { toast('占位符「' + key + '」已存在，不能重复'); return; }
+  template.placeholders = template.placeholders || {};
+  const reg = '{' + key + '}';
+  if (!template.placeholders[reg]) template.placeholders[reg] = key;
+  ab.placeholders = ab.placeholders || [];
+  ab.placeholders.push(key);
+  if (sample[key] === undefined) sample[key] = '';
+  snapshot('ph:add:' + key, true);
+  renderContentPanel();
+  toast('已添加占位符 {' + key + '}');
+}
+function removePlaceholder(key) {
+  const ab = activeBoard(); if (!ab) return;
+  if (!confirm('从当前页面移除占位符「' + key + '」？（内容值保留）')) return;
+  ab.placeholders = (ab.placeholders || []).filter((k) => k !== key);
+  snapshot('ph:del:' + key, true);
+  renderContentPanel();
+  toast('已移除占位符');
 }
 function setContent(key, val) {
   sample[key] = val;
