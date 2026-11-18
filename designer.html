@@ -107,7 +107,11 @@
   #panel .mini2{border:1px solid var(--line);background:#1c1c1c;color:var(--ink);border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;}
   #panel .mini2:hover{border-color:var(--moss);}
   #panel .sw{width:20px;height:20px;border-radius:4px;border:1px solid var(--line);cursor:pointer;display:inline-block;}
-  #status{position:fixed;right:16px;bottom:16px;background:var(--moss);color:#12231a;padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;}
+  #status{position:fixed;right:16px;bottom:48px;background:var(--moss);color:#12231a;padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;}
+  #socialbar{display:flex;justify-content:flex-end;align-items:center;gap:12px;padding:6px 16px;border-top:1px solid var(--line);background:var(--panel);flex:0 0 auto;}
+  #socialbar a{display:inline-flex;align-items:center;justify-content:center;color:var(--muted);text-decoration:none;}
+  #socialbar a:hover{color:var(--accent);}
+  #socialbar svg{width:20px;height:20px;fill:currentColor;}
   #status.show{opacity:1;}
   #crop-modal{position:fixed;inset:0;background:rgba(0,0,0,.82);display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:100;}
   #crop-modal.show{display:flex;}
@@ -177,6 +181,14 @@
     <button class="tb" onclick="pickColor()" title="吸管">💧</button>
   </div>
 </main>
+<footer id="socialbar">
+  <a href="https://github.com/TheodoreYan977/theoagent-designer" target="_blank" rel="noopener" title="GitHub 开源项目">
+    <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+  </a>
+  <a href="https://discord.gg/cvAx8TfptA" target="_blank" rel="noopener" title="Discord 社区">
+    <svg viewBox="0 0 24 24"><path d="M20.317 4.369a19.79 19.79 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.055 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.1 13.1 0 01-1.872-.892.077.077 0 01-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.009c.12.099.246.198.373.292a.077.077 0 01-.006.127 12.3 12.3 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.84 19.84 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.027zM8.02 15.331c-1.183 0-2.157-1.086-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.419 0 1.333-.956 2.419-2.157 2.419zm7.975 0c-1.183 0-2.157-1.086-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.419 0 1.333-.946 2.419-2.157 2.419z"/></svg>
+  </a>
+</footer>
 <div id="status"></div>
 
 <div id="export-modal">
@@ -222,7 +234,7 @@
 
 <script>
 const FACE = { 'Smiley Sans': 'Smiley', 'Noto Serif': 'NotoSerif', 'Noto Sans': 'NotoSans', 'Noto Sans SC': 'NotoSC' };
-let template = null, sample = null, activeId = 'cover', selectedId = null, selectedIds = [];
+let template = null, sample = null, activeId = 'cover', selectedId = null, selectedIds = [], bgSelected = false;
 let history = [], index = -1, lastSnapKey = '', lastSnapTime = 0;
 let viewZoom = 1, panX = 0, panY = 0;
 const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -368,7 +380,12 @@ function renderLayers() {
       <span class="op" title="锁定/解锁" onclick="event.stopPropagation();toggleLock('${el.id}')">${el.locked ? '🔒' : '🔓'}</span>
     </div>`
   ).join('');
-  box.innerHTML = `<div class="ltitle">图层（上为顶层）</div>` + (rows || '<div class="empty" style="padding:10px 0">暂无元素</div>');
+  const bgRow = `<div class="layer bg ${bgSelected ? 'sel' : ''}" onclick="selectBg()" title="背景图层：页面宽高 / 底色">
+    <span class="ico">▣</span>
+    <span class="nm">背景</span>
+    <span style="display:inline-block;width:12px;height:12px;border-radius:3px;border:1px solid var(--line);background:${ab.background || '#fff'}"></span>
+  </div>`;
+  box.innerHTML = `<div class="ltitle">图层（上为顶层）</div>` + (rows || '') + bgRow;
 }
 function renameLayer(id) { const ab = activeBoard(); const el = ab.elements.find((e) => e.id === id); if (!el) return; const v = prompt('图层名称', elName(el)); if (v === null) return; el.name = v.trim() || elName(el); snapshot('layer:rename:' + id, true); render(); }
 function toggleVisible(id) { const ab = activeBoard(); const el = ab.elements.find((e) => e.id === id); if (!el) return; el.visible = el.visible === false ? true : false; snapshot('layer:visible:' + id, true); render(); }
@@ -548,8 +565,17 @@ const selectedEls = () => selectedIds.map((id) => activeBoard().elements.find((e
 function applySelectionHighlight() {
   document.querySelectorAll('#board .el').forEach((d) => d.classList.toggle('selected', selectedIds.includes(d.dataset.id)));
 }
-function clearSel() { selectedId = null; selectedIds = []; applySelectionHighlight(); }
+function clearSel() { bgSelected = false; selectedId = null; selectedIds = []; applySelectionHighlight(); }
+function selectBg() {
+  bgSelected = true;
+  selectedId = null; selectedIds = [];
+  applySelectionHighlight();
+  renderSelection();
+  renderLayers();
+  populatePanel(null);
+}
 function select(id) {
+  bgSelected = false;
   const ab = activeBoard();
   const el = ab.elements.find((e) => e.id === id);
   if (el && el.group) selectedIds = ab.elements.filter((e) => e.group === el.group).map((e) => e.id);
@@ -610,17 +636,32 @@ function addBrandColor() {
   else toast('已在品牌色里');
 }
 
-function pageSizeHtml() {
+function bgPropsHtml() {
   const ab = activeBoard(); if (!ab) return '';
-  return `<div class="row" style="border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:10px;background:#232323">
-    <label style="margin:0 0 6px">当前页 · ${escHtml(ab.name)}</label>
-    <div style="display:flex;gap:6px;align-items:flex-end">
-      <div style="flex:1;min-width:0"><label style="margin:0">宽(px)</label><input type="number" id="pg-w" value="${ab.width}" style="height:30px"></div>
-      <div style="flex:1;min-width:0"><label style="margin:0">高(px)</label><input type="number" id="pg-h" value="${ab.height}" style="height:30px"></div>
-      <button type="button" class="mini2" style="flex:0 0 auto" onclick="applyPageSize()">应用</button>
+  return `<div class="row"><label>图层类型</label><div style="color:var(--moss)">背景</div></div>
+    <div class="row"><label>宽(px) / 高(px)</label>
+      <div style="display:flex;gap:6px;align-items:flex-end">
+        <input type="number" id="pg-w" value="${ab.width}" style="height:30px">
+        <input type="number" id="pg-h" value="${ab.height}" style="height:30px">
+        <button type="button" class="mini2" onclick="applyPageSize()">应用</button>
+      </div>
     </div>
-    <div style="color:var(--muted);font-size:11px;margin-top:4px">画布 ${ab.width} × ${ab.height} px</div>
-  </div>`;
+    <div class="row"><label>颜色</label>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input type="color" id="bg-color" value="${ab.background || '#ffffff'}" oninput="setBgColor(this.value)">
+        <button type="button" class="mini2" onclick="pickBgColor()">吸管</button>
+      </div>
+    </div>`;
+}
+function setBgColor(val) {
+  const ab = activeBoard(); if (!ab) return;
+  ab.background = val;
+  snapshot('bg:color:' + val);
+  render();
+}
+async function pickBgColor() {
+  if (!window.EyeDropper) { toast('当前浏览器不支持吸管（需 Chrome/Edge）'); return; }
+  try { const r = await new EyeDropper().open(); setBgColor(r.sRGBHex); const el = $('bg-color'); if (el) el.value = r.sRGBHex; } catch (e) {}
 }
 function applyPageSize() {
   const ab = activeBoard(); if (!ab) return;
@@ -671,10 +712,13 @@ function applySavedWidths() {
 
 function populatePanel(el) {
   const p = $('props');
-  if (!el) { p.innerHTML = pageSizeHtml() + '<div class="empty">点画布上的元素编辑</div>'; return; }
+  if (!el) {
+    if (bgSelected) { p.innerHTML = bgPropsHtml(); return; }
+    p.innerHTML = '<div class="empty">点画布上的元素编辑</div>'; return;
+  }
   const isText = el.type === 'text', isImage = el.type === 'image', isRect = el.type === 'rect';
   const phKeys = insertDropdownKeys();
-  p.innerHTML = pageSizeHtml() + `
+  p.innerHTML = `
     <div class="row"><label>元素类型</label><div style="color:var(--moss)">${el.type} · <code style="font-size:11px">${el.id}</code></div></div>
     ${isText ? `<div class="row"><label>内容（可含 {占位符}）</label><textarea id="p-content" oninput="commitField('content', this.value)">${escHtml(el.content || '')}</textarea>
       <div class="ph" style="margin-top:6px"><select id="ph-sel">${phKeys.map((k) => { const g = isGlobalKey(k); return `<option value="{${k}}" style="${g ? 'background:#6a5a20;color:#fff' : ''}">${g ? '★ ' : ''}{${k}}</option>`; }).join('')}</select><button onclick="insertPh()">插入</button></div></div>` : ''}
