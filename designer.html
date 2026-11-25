@@ -143,6 +143,18 @@
   .pm-actions{display:flex;gap:8px;justify-content:flex-end;}
   .pm-actions button{border:1px solid var(--line);background:#1c1c1c;color:var(--ink);padding:7px 16px;border-radius:6px;cursor:pointer;}
   .pm-actions button.primary{background:var(--moss);border-color:var(--moss);color:#12231a;font-weight:600;}
+  #ph-modal,#add-el-modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:135;}
+  #ph-modal.show,#add-el-modal.show{display:flex;}
+  .ph-type-row{display:flex;gap:8px;}
+  .ph-type-row button{border:1px solid var(--line);background:#1c1c1c;color:var(--ink);border-radius:8px;padding:8px 10px;cursor:pointer;font-size:13px;flex:1;}
+  .ph-type-row button.on{border-color:var(--moss);background:var(--moss);color:#12231a;font-weight:600;}
+  .phbadge{font-size:10px;border:1px solid var(--line);border-radius:4px;padding:0 4px;color:var(--muted);margin-left:4px;flex:0 0 auto;}
+  .phbadge.img{color:var(--accent);border-color:var(--accent);}
+  .addopt-list{display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto;}
+  .addopt{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;cursor:pointer;font-size:13px;color:var(--ink);background:#1c1c1c;}
+  .addopt:hover{border-color:var(--moss);}
+  .addopt .k{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .addopt .tag{font-size:10px;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 4px;}
 </style>
 </head>
 <body>
@@ -175,8 +187,8 @@
   <aside id="layers"></aside>
   <aside id="panel"><div id="props"></div></aside>
   <div id="toolbar">
-    <button class="tb" onclick="addElement('text')" title="文字">T</button>
-    <button class="tb" onclick="addElement('image')" title="图片">▣</button>
+    <button class="tb" onclick="openAddEl('text')" title="文字">T</button>
+    <button class="tb" onclick="openAddEl('image')" title="图片">▣</button>
     <button class="tb" onclick="addElement('rect')" title="矩形">■</button>
     <button class="tb" onclick="pickColor()" title="吸管">💧</button>
   </div>
@@ -224,6 +236,36 @@
     <label>已存模板（点名称打开）</label>
     <div id="tpl-list" style="max-height:320px;overflow-y:auto"></div>
     <div class="pm-actions"><button onclick="closeTplLib()">关闭</button></div>
+  </div>
+</div>
+
+<div id="ph-modal">
+  <div class="pm-box">
+    <h3>添加占位符</h3>
+    <label>名称<input id="ph-name" type="text" placeholder="仅英文/数字/下划线，如 title_en" onkeydown="if(event.key==='Enter'){event.preventDefault();confirmAddPlaceholder();}"></label>
+    <label>类型
+      <div class="ph-type-row">
+        <button type="button" id="ph-type-text" onclick="setPhDraftType('text')">文字</button>
+        <button type="button" id="ph-type-image" onclick="setPhDraftType('image')">图片</button>
+      </div>
+    </label>
+    <div class="pm-actions"><button onclick="closeAddPlaceholder()">取消</button><button class="primary" onclick="confirmAddPlaceholder()">添加</button></div>
+  </div>
+</div>
+
+<div id="add-el-modal">
+  <div class="pm-box">
+    <h3 id="add-el-title">添加文字</h3>
+    <label>基于现有占位符（点击即添加绑定的元素）</label>
+    <div id="add-el-list" class="addopt-list"></div>
+    <div class="pm-actions" style="justify-content:space-between">
+      <button type="button" id="add-el-blank" onclick="addBlankFromModal()">＋ 新建空白文字</button>
+      <div style="display:flex;gap:8px">
+        <button type="button" id="add-el-upload" onclick="pickAddImage()">上传图片并添加</button>
+        <button onclick="closeAddEl()">关闭</button>
+      </div>
+    </div>
+    <input type="file" id="add-el-file" accept="image/*" style="display:none" onchange="onAddElFile(event)">
   </div>
 </div>
 
@@ -1042,15 +1084,65 @@ function toggleRatio() {
   populatePanel(el);
 }
 
+function defaultEl(type) {
+  return { id: type + '-' + Date.now().toString(36), type, x: 100, y: 100, w: 400, h: 120, font: 'Smiley Sans', size: 40, color: '#1F1F1F', align: 'left', lineHeight: 1.3, bold: false, content: '新文字', radius: 0, border: 'none', src: '', fit: 'cover', naturalSize: type === 'image' };
+}
 function addElement(type) {
   const ab = activeBoard();
-  const n = ab.elements.length;
-  const el = { id: type + '-' + Date.now().toString(36), type, x: 100, y: 100, w: 400, h: 120, font: 'Smiley Sans', size: 40, color: '#1F1F1F', align: 'left', lineHeight: 1.3, bold: false, content: '新文字', radius: 0, border: 'none', src: '', fit: 'cover', naturalSize: type === 'image' };
+  const el = defaultEl(type);
   ab.elements.push(el);
   snapshot('add:' + el.id, true);
   render();
   select(el.id);
 }
+
+let addElType = 'text';
+function openAddEl(type) {
+  addElType = type === 'image' ? 'image' : 'text';
+  const isImg = addElType === 'image';
+  const keys = phKeysOfType(addElType);
+  $('add-el-title').textContent = isImg ? '添加图片' : '添加文字';
+  $('add-el-blank').textContent = isImg ? '＋ 新建空白图片' : '＋ 新建空白文字';
+  $('add-el-list').innerHTML = keys.length
+    ? keys.map((k) => `<div class="addopt" onclick="addElementBound('${addElType}','${k}')"><span class="k"><code>{${k}}</code></span><span class="tag">${isImg ? '图片' : '文字'}</span></div>`).join('')
+    : `<div style="color:var(--muted);font-size:12px;padding:8px 0">当前页还没有${isImg ? '图片' : '文字'}占位符</div>`;
+  $('add-el-upload').style.display = isImg ? 'inline-block' : 'none';
+  $('add-el-modal').classList.add('show');
+}
+function closeAddEl() { $('add-el-modal').classList.remove('show'); }
+function addBlankFromModal() { const t = addElType; closeAddEl(); addElement(t); }
+function addElementBound(type, key) {
+  const ab = activeBoard();
+  const el = defaultEl(type);
+  if (type === 'text') { el.content = '{' + key + '}'; }
+  else { el.src = '{' + key + '}'; el.radius = 12; el.naturalSize = true; }
+  el.ph = key;
+  ab.elements.push(el);
+  snapshot('add:' + el.id, true);
+  render();
+  select(el.id);
+  if (type === 'image') sizeImageFromSample(el, key);
+  closeAddEl();
+  toast('已添加' + (type === 'image' ? '图片' : '文字') + '元素 {' + key + '}');
+}
+function sizeImageFromSample(el, key) {
+  if (!sample[key]) return;
+  const img = new Image();
+  img.onload = () => {
+    const nw = img.naturalWidth, nh = img.naturalHeight;
+    if (!nw || !nh) return;
+    el.naturalW = nw; el.naturalH = nh;
+    const ab = activeBoard();
+    let w = Math.min(nw, Math.round(ab.width * 0.6));
+    let h = Math.round(w * nh / nw);
+    if (h > ab.height * 0.6) { h = Math.round(ab.height * 0.6); w = Math.round(h * nw / nh); }
+    el.w = Math.max(1, w); el.h = Math.max(1, h);
+    updateElementStyle(el); positionOverlay();
+  };
+  img.src = resolveSrc('{' + key + '}');
+}
+function pickAddImage() { const f = $('add-el-file'); if (f) f.click(); }
+function onAddElFile(e) { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) { closeAddEl(); addImageFromFile(f, 100, 100); } }
 
 function reorder(dir) {
   const ab = activeBoard();
@@ -1172,6 +1264,7 @@ async function loadTemplate(name) {
     for (const pg of t.pages) pg.placeholders = pg.placeholders || [];
     t.globalKeys = t.globalKeys || [];
     template = t;
+    ensurePhTypes();
     activeId = template.pages[0].id;
     clearSel();
     history = [clone(template)]; index = 0; updateButtons();
@@ -1240,6 +1333,7 @@ function downloadAll() {
   if (template.artboards && !template.pages) template.pages = template.artboards; // 兼容旧格式
   for (const pg of template.pages) pg.placeholders = pg.placeholders || [];
   template.globalKeys = template.globalKeys || [];
+  ensurePhTypes();
   activeId = template.pages[0].id;
   history = [clone(template)]; index = 0; updateButtons();
   applySavedWidths();
@@ -1273,6 +1367,26 @@ function pagePlaceholderKeys(page) {
   return kept;
 }
 function isGlobalKey(k) { return (template.globalKeys || []).includes(k); }
+function phType(key) { return (template.phTypes && template.phTypes[key]) || 'text'; }
+function setPhType(key, type) { template.phTypes = template.phTypes || {}; template.phTypes[key] = (type === 'image') ? 'image' : 'text'; }
+function inferPhTypes() {
+  const types = {};
+  for (const pg of template.pages) for (const el of (pg.elements || [])) {
+    if (el.type === 'image' && el.src) for (const m of (String(el.src).match(/\{(\w+)\}/g) || [])) types[m.slice(1, -1)] = 'image';
+  }
+  for (const pg of template.pages) for (const el of (pg.elements || [])) {
+    if (el.content) for (const m of (String(el.content).match(/\{(\w+)\}/g) || [])) { const k = m.slice(1, -1); if (!types[k]) types[k] = 'text'; }
+  }
+  return types;
+}
+function ensurePhTypes() {
+  const inferred = inferPhTypes();
+  template.phTypes = template.phTypes || {};
+  for (const k of Object.keys(inferred)) if (!template.phTypes[k]) template.phTypes[k] = inferred[k];
+}
+function phKeysOfType(type) {
+  return pagePlaceholderKeys(activeBoard()).filter((k) => phType(k) === type);
+}
 function refreshPropsIfText() { const el = selectedEl(); if (el && el.type === 'text') populatePanel(el); }
 function renderContentPanel() {
   const box = $('content-panel'); if (!box) return;
@@ -1286,9 +1400,15 @@ function renderContentPanel() {
     const del = `<button class="mini2" title="删除占位符" onclick="deletePlaceholder('${k}')">×</button>`;
     const todo = empty ? ' <em class="todo">待填写</em>' : '';
     const note = ph['{' + k + '}'] || '';
+    const type = phType(k), isImg = type === 'image';
+    const badge = `<span class="phbadge ${isImg ? 'img' : ''}">${isImg ? '图片' : '文字'}</span>`;
+    const val = empty ? '' : String(sample[k]);
+    const contentArea = isImg
+      ? `<div class="phimg" data-img="${k}">${val ? `<img src="${escHtml(resolveSrc(val))}" style="max-width:100%;max-height:90px;border-radius:6px;opacity:.9;display:block;margin:0 0 6px">` : ''}<button type="button" style="width:100%;padding:7px 8px;border:1px dashed var(--line);border-radius:6px;background:#1c1c1c;color:var(--ink);cursor:pointer;font-size:12px" onclick="pickPhImage('${k}')">⬆ 上传图片</button><input type="file" id="ph-file-${k}" accept="image/*" style="display:none" onchange="onPhFile(event, '${k}')"><input type="text" data-ck="${k}" value="${escHtml(val)}" placeholder="或粘贴路径 / dataURL" style="margin-top:6px" oninput="setContent('${k}', this.value)"></div>`
+      : `<input type="text" data-ck="${k}" placeholder="内容值" value="${escHtml(val)}" oninput="setContent('${k}', this.value)">`;
     return `<div class="phblock ${g ? 'global' : ''}">
       <div class="phhead">
-        <span class="phname" ondblclick="renamePlaceholder('${k}')" title="双击重命名"><code>{${k}}</code>${todo}</span>
+        <span class="phname" ondblclick="renamePlaceholder('${k}')" title="双击重命名"><code>{${k}}</code>${badge}${todo}</span>
         <span class="phops">
           <label class="gchk"><input type="checkbox" ${g ? 'checked' : ''} onchange="toggleGlobal('${k}', this.checked)">全局</label>
           <button class="mini2" onclick="movePlaceholder('${k}', -1)" title="上移">↑</button>
@@ -1297,18 +1417,31 @@ function renderContentPanel() {
         </span>
       </div>
       <input type="text" class="phnote" data-note="${k}" placeholder="备注（这个占位符填什么）" value="${escHtml(note)}" oninput="setPhNote('${k}', this.value)">
-      <input type="text" data-ck="${k}" placeholder="内容值" value="${escHtml(sample[k] || '')}" oninput="setContent('${k}', this.value)">
+      ${contentArea}
     </div>`;
   }).join('');
   box.innerHTML = `<div class="ltitle">内容 / 占位符<button class="mini" onclick="saveContent()">保存</button></div>
-    <div class="row"><button class="mini" style="width:100%" onclick="addPlaceholder()">＋ 添加占位符</button></div>`
+    <div class="row"><button class="mini" style="width:100%" onclick="openAddPlaceholder()">＋ 添加占位符</button></div>`
     + (rows || '<div class="empty">当前页还没有占位符</div>');
 }
-function addPlaceholder() {
+let phDraftType = 'text';
+function openAddPlaceholder() {
+  phDraftType = 'text';
+  $('ph-name').value = '';
+  updatePhTypeButtons();
+  $('ph-modal').classList.add('show');
+  setTimeout(() => { const n = $('ph-name'); if (n) n.focus(); }, 0);
+}
+function setPhDraftType(t) { phDraftType = (t === 'image') ? 'image' : 'text'; updatePhTypeButtons(); }
+function updatePhTypeButtons() {
+  const t = $('ph-type-text'), i = $('ph-type-image');
+  if (t) t.classList.toggle('on', phDraftType === 'text');
+  if (i) i.classList.toggle('on', phDraftType === 'image');
+}
+function closeAddPlaceholder() { $('ph-modal').classList.remove('show'); }
+function confirmAddPlaceholder() {
   const ab = activeBoard(); if (!ab) return;
-  const input = prompt('输入占位符名称（仅英文+数字+下划线，如 title_en）');
-  if (input === null) return;
-  const key = String(input).replace(/[{}]/g, '').trim();
+  const key = String($('ph-name').value || '').replace(/[{}]/g, '').trim();
   if (!key) { toast('名称不能为空'); return; }
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) { toast('只能英文/数字/下划线，且以字母或下划线开头'); return; }
   if (pagePlaceholderKeys(ab).includes(key)) { toast('占位符「' + key + '」已存在，不能重复'); return; }
@@ -1318,10 +1451,27 @@ function addPlaceholder() {
   ab.placeholders = ab.placeholders || [];
   ab.placeholders.push(key);
   if (sample[key] === undefined) sample[key] = '';
+  setPhType(key, phDraftType);
   snapshot('ph:add:' + key, true);
   renderContentPanel();
   refreshPropsIfText();
-  toast('已添加占位符 {' + key + '}');
+  closeAddPlaceholder();
+  toast('已添加' + (phDraftType === 'image' ? '图片' : '文字') + '占位符 {' + key + '}');
+}
+function pickPhImage(key) { const f = $('ph-file-' + key); if (f) f.click(); }
+function onPhFile(e, key) { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) uploadPhImage(key, f); }
+async function uploadPhImage(key, file) {
+  if (!/^image\//.test(file.type) && !/\.(png|jpe?g|gif|webp|svg)$/i.test(file.name)) { toast('请选择图片文件'); return; }
+  toast('上传中…');
+  try {
+    const res = await fetch('/api/upload?name=' + encodeURIComponent(file.name), { method: 'POST', body: file });
+    let j = { ok: false, error: 'HTTP ' + res.status };
+    try { j = await res.json(); } catch {}
+    if (!j.ok) { toast('上传失败：' + (j.error || '')); return; }
+    setContent(key, j.path);
+    renderContentPanel();
+    toast('已上传图片');
+  } catch (err) { toast(netMsg(err)); }
 }
 function deletePlaceholder(key) {
   const ab = activeBoard(); if (!ab) return;
@@ -1342,6 +1492,7 @@ function deletePlaceholder(key) {
     }
   }
   if (template.placeholders) delete template.placeholders[reg];
+  if (template.phTypes) delete template.phTypes[key];
   delete sample[key];
   snapshot('ph:del:' + key, true);
   render(); populatePanel(selectedEl()); renderContentPanel();
@@ -1403,6 +1554,10 @@ function renamePlaceholder(oldKey) {
     template.placeholders[nreg] = template.placeholders[reg];
     delete template.placeholders[reg];
   }
+  if (template.phTypes && template.phTypes[oldKey] !== undefined) {
+    template.phTypes[nk] = template.phTypes[oldKey];
+    delete template.phTypes[oldKey];
+  }
   template.globalKeys = (template.globalKeys || []).map((k) => (k === oldKey ? nk : k));
   for (const pg of template.pages) {
     pg.placeholders = (pg.placeholders || []).map((k) => (k === oldKey ? nk : k));
@@ -1422,7 +1577,7 @@ function insertDropdownKeys() {
   const reg = Object.keys(template.placeholders || {}).map((x) => x.replace(/[{}]/g, ''));
   const out = eff.slice();
   for (const k of reg) if (out.indexOf(k) === -1) out.push(k);
-  return out;
+  return out.filter((k) => phType(k) === 'text');
 }
 function setContent(key, val) {
   sample[key] = val;
@@ -1510,16 +1665,8 @@ window.addEventListener('keydown', (e) => {
   else if (k === 'g' && e.shiftKey) { e.preventDefault(); ungroupSel(); }
 });
 
-// 拖拽图片文件到画布 = 上传并新增图片元素
-const canvasEl = $('canvas');
-canvasEl.addEventListener('dragover', (e) => e.preventDefault());
-canvasEl.addEventListener('drop', async (e) => {
-  e.preventDefault();
-  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-  if (!f || !/^image\//.test(f.type)) return;
-  const s = scale(), ab = activeBoard(), r = $('stage').getBoundingClientRect();
-  const x = Math.max(0, Math.min(ab.width - 100, Math.round((e.clientX - r.left) / s)));
-  const y = Math.max(0, Math.min(ab.height - 100, Math.round((e.clientY - r.top) / s)));
+async function addImageFromFile(f, x, y) {
+  if (!/^image\//.test(f.type) && !/\.(png|jpe?g|gif|webp|svg)$/i.test(f.name)) { toast('请选择图片文件'); return; }
   toast('上传中…');
   try {
     const res = await fetch('/api/upload?name=' + encodeURIComponent(f.name), { method: 'POST', body: f });
@@ -1529,12 +1676,25 @@ canvasEl.addEventListener('drop', async (e) => {
     let w = 400, h = 300, nw = 0, nh = 0;
     try { const n = await naturalSize(f); w = nw = n.w; h = nh = n.h; } catch {}
     const el = { id: 'image-' + Date.now().toString(36), type: 'image', x, y, w, h, naturalW: nw, naturalH: nh, src: j.path, fit: 'cover', radius: 12, naturalSize: true };
-    ab.elements.push(el);
+    activeBoard().elements.push(el);
     snapshot('add:' + el.id, true);
     render();
     select(el.id);
     toast('已添加图片');
   } catch (err) { toast(netMsg(err)); }
+}
+
+// 拖拽图片文件到画布 = 上传并新增图片元素
+const canvasEl = $('canvas');
+canvasEl.addEventListener('dragover', (e) => e.preventDefault());
+canvasEl.addEventListener('drop', (e) => {
+  e.preventDefault();
+  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (!f || !/^image\//.test(f.type)) return;
+  const s = scale(), ab = activeBoard(), r = $('stage').getBoundingClientRect();
+  const x = Math.max(0, Math.min(ab.width - 100, Math.round((e.clientX - r.left) / s)));
+  const y = Math.max(0, Math.min(ab.height - 100, Math.round((e.clientY - r.top) / s)));
+  addImageFromFile(f, x, y);
 });
 
 // 缩放 / 平移 / 复位
