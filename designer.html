@@ -1138,6 +1138,7 @@ function sizeImageFromSample(el, key) {
     if (h > ab.height * 0.6) { h = Math.round(ab.height * 0.6); w = Math.round(h * nw / nh); }
     el.w = Math.max(1, w); el.h = Math.max(1, h);
     updateElementStyle(el); positionOverlay();
+    if (selectedId === el.id) { const pw = $('p-w'), ph = $('p-h'); if (pw) pw.value = el.w; if (ph) ph.value = el.h; }
   };
   img.src = resolveSrc('{' + key + '}');
 }
