@@ -117,6 +117,13 @@ export function startServer(port = PORT) {
       res.end(JSON.stringify({ error: e.message }));
     }
   });
+  server.on('error', (e) => {
+    if (e && e.code === 'EADDRINUSE') {
+      console.error(`[theoagent-designer] 端口 ${port} 仍被占用：请先关闭占用进程，或换端口启动（node server.mjs 8091）。`);
+      process.exit(1);
+    }
+    throw e;
+  });
   server.listen(port, HOST, () => {
     const u = `http://${HOST}:${port}`;
     console.log(`TheoAgent 图文设计器 → ${u}`);

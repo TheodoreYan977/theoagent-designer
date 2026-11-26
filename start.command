@@ -32,4 +32,14 @@ echo ""
 echo "启动中……浏览器会自动打开 http://127.0.0.1:8090"
 echo "（关闭本窗口 / 按 Ctrl+C 可停止服务）"
 echo ""
+
+# 先关闭上一个占用 8090 的服务，再拉起新的
+PORT=8090
+OLD_PID=$(lsof -ti tcp:"$PORT" 2>/dev/null)
+if [ -n "$OLD_PID" ]; then
+  echo "检测到上一个服务 (PID $OLD_PID)，正在关闭……"
+  kill -9 $OLD_PID 2>/dev/null
+  sleep 1
+fi
+
 node server.mjs
